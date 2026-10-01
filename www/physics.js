@@ -10,7 +10,10 @@ export function stepVehicle(car,input,track,dt=FIXED_DT){
   track.query(car.x,car.z,car.contact);car.surface=car.contact.surface;const surface=SURFACES[car.surface];
   const sin=Math.sin(car.a),cos=Math.cos(car.a),forward=car.vx*sin+car.vz*cos,lateral=car.vx*cos-car.vz*sin,speed=Math.hypot(car.vx,car.vz);
   // Steering rack, not immediate yaw. Full lock at walking speed, gentler at speed.
-  const steerLimit=.57/(1+Math.abs(forward)/22);const target=input.steer*steerLimit;
+  // Input: negative = driver left, positive = driver right.
+  // In this right-handed renderer the chase camera faces local +Z: screen left
+  // is local +X, so driver-left steering needs a positive world yaw.
+  const steerLimit=.57/(1+Math.abs(forward)/22);const target=-input.steer*steerLimit;
   car.steerAngle+=(target-car.steerAngle)*(1-Math.exp(-dt*8));
   car.handbrake=input.handbrake>.5;
   car.boost=input.nitro>.5&&input.throttle>0&&forward>-1&&car.n>0;

@@ -1,0 +1,68 @@
+name: Build Windows PC
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  browser-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+      - name: Verify full race and touch compatibility
+        run: npm run test:browser
+      - name: Upload race verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: race-verification
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+  windows-pc:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Check modules and vehicle dynamics
+        run: npm run check; if ($LASTEXITCODE) { exit $LASTEXITCODE }; npm test
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+      - name: Verify packaged Windows game
+        env:
+          RACING_PACKAGED_EXE: dist/win-unpacked/Marocto Racing.exe
+        run: npm run test:desktop
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-PC
+          path: dist/Marocto-Racing-PC-*.exe
+          retention-days: 30
+      - name: Upload PC verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PC-verification
+          path: test-results/desktop/
+          if-no-files-found: ignore
+          retention-days: 14

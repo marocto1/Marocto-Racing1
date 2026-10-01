@@ -1,3 +1,4 @@
+import {platform} from './platform.js';
 import {Geometry} from './geometry.js';
 import {Engine,ChaseCamera,modelMatrix} from './engine.js';
 import {CAR_SPECS,buildCar} from './cars.js';
@@ -20,11 +21,12 @@ const MR=window.MR={
     for(let p=0;p<2;p++)cameras[p].reset(S[p]);winner=-1;countdown=3;accumulator=0;last=0;running=true;mode='race';input.setEnabled(true);
     document.querySelector('#race').appendChild(canvas);document.querySelector('#race').classList.add('on');document.querySelector('#menu').classList.remove('on');document.querySelector('#finish').classList.remove('show');document.querySelector('#pause').classList.remove('show');countdownEl.textContent='3';hudTime=1;
   },
+  pause(){pause();},
   stop(){running=false;mode='menu';input.setEnabled(false);document.querySelector('#race').classList.remove('on');document.querySelector('#menu').classList.add('on');document.querySelector('#finish').classList.remove('show');countdownEl.textContent='';},
   preview(p){if(!E)return;previewPlayer=p;mode='preview';previewCar.a=.40;previewCamera.initialized=false;document.querySelector('#garage-preview').appendChild(canvas);},
   closePreview(){if(mode==='preview')mode='menu';},
   resume(){if(mode==='race'&&winner<0){running=true;last=0;input.setEnabled(true);document.querySelector('#pause').classList.remove('show');}},
-  getDiagnostics(){return {version:'1.3.0',mode,running,countdown,winner,trackLength:track.length,checkpoints:track.gates.length,quality:E?.quality,drawCalls:E?.drawCalls,triangles:E?.triangles,frameMs:E?.frameEMA,vehicles:S.map(s=>({p:s.p,x:s.x,z:s.z,a:s.a,vx:s.vx,vz:s.vz,steer:s.steerAngle,wheelSpin:s.wheelSpin,surface:s.surface,n:s.n,lap:s.progress.completed,next:s.progress.next,collisions:s.collisionCount})),cameras:cameras.map(c=>({x:c.x,z:c.z,dx:c.dx,dz:c.dz}))};}
+  getDiagnostics(){return {version:'1.4.0',platform:platform.pc?'pc':'touch',layout:platform.vertical?'vertical':'horizontal',mode,running,countdown,winner,trackLength:track.length,checkpoints:track.gates.length,quality:E?.quality,drawCalls:E?.drawCalls,triangles:E?.triangles,frameMs:E?.frameEMA,vehicles:S.map(s=>({p:s.p,x:s.x,z:s.z,a:s.a,vx:s.vx,vz:s.vz,steer:s.steerAngle,wheelSpin:s.wheelSpin,surface:s.surface,n:s.n,lap:s.progress.completed,next:s.progress.next,collisions:s.collisionCount})),cameras:cameras.map(c=>({x:c.x,z:c.z,dx:c.dx,dz:c.dz}))};}
 };
 // Explicit debug mode exposes the real simulation for regression tests, never a second game.
 if(new URLSearchParams(location.search).has('debug'))MR.debug={track,input,get states(){return S;},get engine(){return E;},advance(seconds){for(let t=0;t<seconds;t+=FIXED_DT)simulate(FIXED_DT);},skipCountdown(){countdown=0;countdownEl.textContent='';}};
@@ -64,8 +66,13 @@ function frame(t){
   if(mode==='preview'){
     previewCar.a+=dt*.12;const vp=previewCamera.update(previewTarget,dt,w/h);E.viewport(0,0,w,h,previewCamera.ex,previewCamera.ez);E.draw(world.studio,vp);drawVehicle(vp,previewCar,pick[previewPlayer]);
   }else if(S.length===2){
-    const bottom=Math.floor(h/2),top=h-bottom;
-    for(let p=0;p<2;p++){const height=p===0?top:bottom,vp=cameras[p].update(S[p],dt,w/height);E.viewport(0,p===0?bottom:0,w,height,cameras[p].ex,cameras[p].ez);renderScene(vp,S[p]);}
+    const halfWidth=Math.floor(w/2),halfHeight=Math.floor(h/2);
+    for(let p=0;p<2;p++){
+      const width=platform.vertical?(p===0?halfWidth:w-halfWidth):w;
+      const height=platform.vertical?h:(p===0?h-halfHeight:halfHeight);
+      const x=platform.vertical&&p===1?halfWidth:0,y=!platform.vertical&&p===0?halfHeight:0;
+      const vp=cameras[p].update(S[p],dt,width/height);E.viewport(x,y,width,height,cameras[p].ex,cameras[p].ez);renderScene(vp,S[p]);
+    }
     hudTime+=dt;if(hudTime>.10){hudTime=0;updateHUD();}
   }E.gl.disable(E.gl.SCISSOR_TEST);
 }

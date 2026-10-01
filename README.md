@@ -1,15 +1,29 @@
-# Marocto Racing v1.3
+# Marocto Racing PC v1.4
 
-Two players on one Android screen, with an original native WebGL2 renderer. No Three.js, external car models or runtime CDN dependencies. Capacitor retains the existing `com.marocto.racing` application ID.
+PC-first development: two players on one Windows computer, using the existing native WebGL2 engine and all v1.3 circuit, car and physics systems. The portable Windows x64 executable needs no Node.js installation. No Three.js, external car models or runtime CDN dependencies. Android remains a later port of the same `www/` game; Capacitor retains `com.marocto.racing`.
 
-## Play and build
+## Windows PC
+
+Download **Marocto-Racing-PC-1.4.0-x64.exe** from the **Marocto-Racing-PC** Actions artifact. Unzip it to a writable folder (D: or E: is recommended), then double-click the executable. Settings and browser data are stored in `Marocto-Racing-Data` beside the executable. The game works offline. P1 appears on the left and P2 on the right. Settings also allow top/bottom split and touch controls. **Esc** pauses/resumes a race or closes a menu; **F11** toggles fullscreen. Alt-Tab pauses and clears held controls.
+
+For development, keep the checkout and npm/Electron caches on D: or E:. With Node.js 22:
+
+```powershell
+npm ci
+npm run pc:dev
+npm run pc:build
+```
+
+`pc:build` produces `dist/Marocto-Racing-PC-1.4.0-x64.exe`. The Electron shell loads only the bundled original game, with a sandboxed renderer. `desktop/` handles the Windows window/fullscreen/quit lifecycle; gameplay stays in `www/`. **Build Windows PC** runs browser race checks and a Windows packaged-app smoke test before uploading the executable.
+
+## Browser development
 
 ```bash
 npm ci
 npm run dev
 ```
 
-Open `http://localhost:4173`. Select each player's car in the garage, then start a 1, 3 or 5 lap race. The three-second countdown precedes movement. The minimap dots identify players; small squares identify their next checkpoint. The ↺ button returns a car to its last validated checkpoint without awarding progress. Returning from the background requires Resume and clears held inputs.
+Open `http://localhost:4173`. Select each player's car in the garage, then start a 1, 3 or 5 lap race. The three-second countdown precedes movement. The minimap dots identify players; small squares identify their next checkpoint. The ↺ button returns a car to its last validated checkpoint without awarding progress. Returning from the background requires Resume and clears held inputs. Left/right actions now match the driver’s screen directions at every car heading, including front-wheel rotation.
 
 | Player | Drive / brake / reverse | Steering | N₂O | Handbrake | Recover |
 | --- | --- | --- | --- | --- | --- |
@@ -25,7 +39,9 @@ npm run test:browser
 npm run android:prepare
 ```
 
-On Windows, keep the checkout and caches on D: or E:. With Java 21 and Android SDK 35 available:
+## Later Android port
+
+Android builds are now manual through **Build Android APK → Run workflow**. This avoids releasing a phone build on every PC change. The existing Capacitor build, multitouch controls and Android signing cache remain available. With Java 21 and SDK 35:
 
 ```powershell
 npm run android:prepare
@@ -33,11 +49,9 @@ Set-Location android
 .\gradlew.bat assembleDebug --no-daemon
 ```
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions generates the Android project, runs the same checks, and uploads **Marocto-Racing-v1.3-debug.apk** in **Marocto-Racing-APK**. Android version is 1.3.0, code 130, minimum SDK 23, target SDK 35. Sensor landscape permits both landscape orientations; browser UI also handles portrait. Android platform files remain generated rather than checked in, matching the original repository workflow.
+APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Android preparation derives the version from `package.json` (1.4.0, code 10400), keeps minimum SDK 23/target SDK 35 and sensor landscape. Generated Android platform files remain outside git. Debug signing is cached across Actions runs; production signing is a separate release task.
 
-Debug builds now cache their debug signing key across Actions runs. A previously installed debug APK may have a different signature because older runs generated a new key. Uninstalling that old build may be needed for the first v1.3 installation; production signing remains a separate release task.
-
-## v1.3 systems
+## Shared racing systems
 
 - `engine.js`: existing WebGL2 pipeline extended with immutable colored meshes, correct surface normals, reusable matrices, fog and independent chase camera state. Static track features are batched into chunks, distant chunks culled by distance. Render scale adapts from 1.0 to 0.55 and caps device pixel ratio at 1.5.
 - `geometry.js` / `cars.js`: six original inspired-by silhouettes, lofted bodywork, sloped glass, roof lines, wheel arch contours, bumpers, lights, vents, trim, mirrors and wings. Four separate cylindrical wheels with visible spokes spin from signed longitudinal speed; front wheels follow the steering rack. These are unlicensed designs, not accurate manufacturer models.
@@ -50,6 +64,6 @@ Debug builds now cache their debug signing key across Actions runs. A previously
 
 Simulation regression checks cover all six classes completing a full lap using real steering/throttle/braking dynamics, grip, inertia, handbrake, barriers, car contacts, reverse, N₂O, ordered gates, invalid finish shortcuts and checkpoint-preserving recovery.
 
-Browser checks use Chromium with real WebGL2/SwiftShader and actual keyboard/CDP touch input: garage selection and six previews, language switching, start/countdown, independent split cameras, both keyboards, four simultaneous fingers, pointer capture/cancellation, a full dynamics lap/result/rematch, and 320×568, 393×852, 640×360 and 1280×720 layouts. The npm-bundled browser avoids a separate CI browser download. Test screenshots are uploaded by Actions. `?debug=1` enables access to the actual simulation for these tests; `MR.getDiagnostics()` provides a read-only snapshot on demand.
+Browser checks use Chromium with real WebGL2/SwiftShader and actual keyboard/CDP touch input: garage selection and six previews, language switching, start/countdown, independent split cameras, both keyboards, four simultaneous fingers, pointer capture/cancellation, a full dynamics lap/result/rematch, and 320×568, 393×852, 640×360 and 1280×720 layouts. The npm-bundled browser avoids a separate CI browser download. PC browser checks additionally cover side-by-side rendering, hidden touch buttons, keyboard legends, layout/input settings, Esc pause/resume and fullscreen. Windows checks launch the packaged Electron game, start an actual WebGL2 race and use both keyboards, Esc and native fullscreen. Test screenshots are uploaded by Actions. `?debug=1` enables access to the actual simulation for these tests; `MR.getDiagnostics()` provides a read-only snapshot on demand.
 
-Desktop browser checks establish correctness, not an Android GPU FPS guarantee. Physical device thermal behavior and touch ergonomics still require device testing. Physics is a simplified planar model without suspension, wheel hop, drivetrain gears or mesh-based contact deformation.
+CI uses software WebGL2 to establish correctness, not a physical Windows/Android GPU FPS guarantee. Physical device thermal behavior and touch ergonomics still require device testing. Physics is a simplified planar model without suspension, wheel hop, drivetrain gears or mesh-based contact deformation.

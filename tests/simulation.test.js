@@ -1,4 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
+import {ChaseCamera} from '../www/engine.js';
 import {Track} from '../www/track.js';import {CAR_SPECS,buildCar} from '../www/cars.js';
 import {createVehicle,stepVehicle,collideBarrier,collideCars,resetVehicle,FIXED_DT} from '../www/physics.js';
 const track=new Track();const controls=()=>({steer:0,throttle:0,brake:0,nitro:0,handbrake:0});
@@ -16,7 +17,20 @@ test('forward crossings of all gates award exactly one lap, reset preserves prog
 // Real tire physics + look-ahead driver: a full lap must be navigable for every class.
 export function driveLap(spec){const car=createVehicle(spec,0,track),k=controls(),target={},near={};let maxOffset=0;
  for(let t=0;t<180;t+=FIXED_DT){track.query(car.x,car.z,near);track.at(near.s+12+Math.abs(car.longitudinal)*.55,0,target);const angle=Math.atan2(target.x-car.x,target.z-car.z),error=Math.atan2(Math.sin(angle-car.a),Math.cos(angle-car.a));const speed=Math.hypot(car.vx,car.vz);
-  k.steer=Math.max(-1,Math.min(1,error*2.6));const desired=Math.max(9,25-Math.abs(error)*30);k.throttle=speed<desired?1:0;k.brake=speed>desired+2?.45:0;
+  k.steer=Math.max(-1,Math.min(1,-error*2.6));const desired=Math.max(9,25-Math.abs(error)*30);k.throttle=speed<desired?1:0;k.brake=speed>desired+2?.45:0;
   stepVehicle(car,k,track);collideBarrier(car,track);track.updateProgress(car,FIXED_DT);maxOffset=Math.max(maxOffset,Math.abs(car.contact.lateral));if(car.progress.completed===1)return {time:t,maxOffset,collisions:car.collisionCount};
  }return {time:Infinity,maxOffset,collisions:car.collisionCount,next:car.progress.next};}
 test('every car can complete an actual lap under the real dynamics',()=>{for(const spec of CAR_SPECS){const result=driveLap(spec);console.log(spec.class,result);assert.ok(result.time<180,`${spec.name}: checkpoint ${result.next}`);assert.ok(result.maxOffset<10,`${spec.name}: excessive corner drift`);assert.equal(result.collisions,0);}});
+
+test('driver left/right map to camera screen left/right, including turned headings',()=>{
+ for(const a of [0,.7,-1.4,Math.PI])for(const steer of [-1,1]){
+  const car=createVehicle(CAR_SPECS[0],0,track);place(car,50);car.a=a;car.vx=Math.sin(a)*12;car.vz=Math.cos(a)*12;
+  const camera=new ChaseCamera();const vp=camera.update(car,1,1.1);
+  const projectX=(x,y,z)=>(vp[0]*x+vp[4]*y+vp[8]*z+vp[12])/(vp[3]*x+vp[7]*y+vp[11]*z+vp[15]);
+  const initial=projectX(car.x,.5,car.z);const startX=car.x,startZ=car.z;const k=controls();k.steer=steer;k.throttle=.2;run(car,k,.5);
+  const straightX=startX+Math.sin(a)*6,straightZ=startZ+Math.cos(a)*6;
+  const difference=projectX(car.x,.5,car.z)-projectX(straightX,.5,straightZ);
+  assert.ok(difference*steer>0,`input ${steer} at yaw ${a}: projected movement ${difference}`);
+  assert.ok(car.steerAngle*steer<0,'Wheel yaw agrees with visible steering');assert.ok(Number.isFinite(initial));
+ }
+});

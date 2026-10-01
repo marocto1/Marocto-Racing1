@@ -8,3 +8,6 @@ artifacts/
 .cache-browser/
 
 .racing-signing/
+
+dist/
+Marocto-Racing-Data/

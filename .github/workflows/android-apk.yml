@@ -2,10 +2,6 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -28,6 +24,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         run: npm ci
       - name: Check web syntax and simulation
         run: npm run check && npm test
@@ -44,12 +42,12 @@ jobs:
         working-directory: android
         run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
       - name: Collect APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Marocto-Racing-v1.3-debug.apk
+        run: node -e "const fs=require('fs'),v=require('./package.json').version;fs.copyFileSync('android/app/build/outputs/apk/debug/app-debug.apk','Marocto-Racing-v'+v+'-debug.apk')"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Marocto-Racing-APK
-          path: Marocto-Racing-v1.3-debug.apk
+          path: Marocto-Racing-v*-debug.apk
           retention-days: 30
       - name: Upload verification evidence
         if: always()
