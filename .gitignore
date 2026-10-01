@@ -1,0 +1,8 @@
+node_modules/
+android/
+test-results/
+playwright-report/
+artifacts/
+*.apk
+
+.cache-browser/

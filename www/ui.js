@@ -1,0 +1,23 @@
+export const TRANSLATIONS={
+ru:{start:'СТАРТ',settings:'НАСТРОЙКИ',exit:'ВЫХОД',garage:'ГАРАЖ',back:'НАЗАД',race:'НАЧАТЬ ГОНКУ',language:'ЯЗЫК',laps:'КРУГИ',wins:'ПОБЕДИЛ',rematch:'РЕВАНШ',menu:'МЕНЮ',resume:'ПРОДОЛЖИТЬ',paused:'ПАУЗА',lap:'КРУГ',kmh:'км/ч',asphalt:'Асфальт',curb:'Бордюр',grass:'Трава',snow:'Снег',drift:'Ручник / дрифт',reverse:'Задний ход',drive:'Заезд',contextLost:'Графика приостановлена. После восстановления игра перезагрузится.',note:'Авторские процедурные машины, вдохновлённые разными классами. Не лицензированные модели.',controls:'P1: WASD · Shift — N₂O · Space — ручник · R — вернуть на трассу\nP2: стрелки · Enter — N₂O · Right Ctrl — ручник · Backspace — вернуть на трассу',reset:'Вернуть на трассу',handbrake:'Ручник',gas:'Газ',brake:'Тормоз / задний ход'},
+en:{start:'START',settings:'SETTINGS',exit:'EXIT',garage:'GARAGE',back:'BACK',race:'START RACE',language:'LANGUAGE',laps:'LAPS',wins:'WINS',rematch:'REMATCH',menu:'MENU',resume:'RESUME',paused:'PAUSED',lap:'LAP',kmh:'km/h',asphalt:'Asphalt',curb:'Curb',grass:'Grass',snow:'Snow',drift:'Handbrake / drift',reverse:'Reverse',drive:'Racing',contextLost:'Graphics paused. The game will reload when the context returns.',note:'Original procedural cars inspired by different classes. Unlicensed designs.',controls:'P1: WASD · Shift — N₂O · Space — handbrake · R — reset to track\nP2: arrows · Enter — N₂O · Right Ctrl — handbrake · Backspace — reset to track',reset:'Reset to track',handbrake:'Handbrake',gas:'Throttle',brake:'Brake / reverse'},
+uz:{start:'BOSHLASH',settings:'SOZLAMALAR',exit:'CHIQISH',garage:'GARAJ',back:'ORTGA',race:'POYGANI BOSHLASH',language:'TIL',laps:'AYLANALAR',wins:'G‘OLIB',rematch:'QAYTA POYGA',menu:'MENYU',resume:'DAVOM ETISH',paused:'PAUZA',lap:'AYLANA',kmh:'km/soat',asphalt:'Asfalt',curb:'Bordyur',grass:'Maysa',snow:'Qor',drift:'Qo‘l tormozi / drift',reverse:'Orqaga',drive:'Poyga',contextLost:'Grafika to‘xtatildi. Tiklangandan keyin o‘yin qayta ochiladi.',note:'Turli sinflardan ilhomlangan original protsedurali avtomobillar. Litsenziyalangan modellar emas.',controls:'P1: WASD · Shift — N₂O · Space — qo‘l tormozi · R — yo‘lga qaytish\nP2: strelkalar · Enter — N₂O · Right Ctrl — qo‘l tormozi · Backspace — yo‘lga qaytish',reset:'Yo‘lga qaytish',handbrake:'Qo‘l tormozi',gas:'Gaz',brake:'Tormoz / orqaga'}
+};
+let lang='ru',activePlayer=0,MR;
+export function strings(){return TRANSLATIONS[lang];}
+const byId=id=>document.getElementById(id);
+function language(value){lang=TRANSLATIONS[value]?value:'ru';try{localStorage.lang=lang;}catch{}document.documentElement.lang=lang;const t=strings();
+  const fields={start:'start',set:'settings',exit:'exit',gt:'garage',st:'settings',back1:'back',back2:'back',racebtn:'race',lt:'language',lapt:'laps',quit:'menu',rematch:'rematch',finishmenu:'menu',resume:'resume',pausetitle:'paused',pausemenu:'menu',modelnote:'note',keyboardhelp:'controls'};
+  for(const id in fields)byId(id).textContent=t[fields[id]];byId('lang').value=lang;
+  document.querySelectorAll('[data-k]').forEach(b=>{const k=b.dataset.k;b.setAttribute('aria-label',`P${+b.dataset.p+1} ${k==='d'?t.handbrake:k==='g'?t.gas:k==='b'?t.brake:k==='reset'?t.reset:k}`);});
+}
+function renderCars(){const list=byId('carlist');list.replaceChildren();MR.cars.forEach((c,i)=>{const b=document.createElement('button');b.textContent=c[0];b.classList.toggle('sel',MR.pick[activePlayer]===i);b.setAttribute('aria-pressed',MR.pick[activePlayer]===i);b.onclick=()=>{MR.pick[activePlayer]=i;renderCars();MR.preview(activePlayer);};list.appendChild(b);});byId('chosen').textContent=`P${activePlayer+1} · ${MR.cars[MR.pick[activePlayer]][0]}`;}
+function player(p){activePlayer=p;byId('tab0').classList.toggle('active',p===0);byId('tab1').classList.toggle('active',p===1);renderCars();MR.preview(p);}
+export function initUI(racing){MR=racing;
+  byId('start').onclick=()=>{byId('garage').classList.add('open');player(0);};byId('back1').onclick=()=>{byId('garage').classList.remove('open');MR.closePreview();};
+  byId('tab0').onclick=()=>player(0);byId('tab1').onclick=()=>player(1);
+  const go=()=>{byId('garage').classList.remove('open');MR.start(byId('laps').value);};byId('racebtn').onclick=go;byId('rematch').onclick=go;
+  byId('set').onclick=()=>byId('settings').classList.add('open');byId('back2').onclick=()=>byId('settings').classList.remove('open');byId('lang').onchange=e=>language(e.target.value);
+  for(const id of ['quit','finishmenu','pausemenu'])byId(id).onclick=()=>MR.stop();byId('resume').onclick=()=>MR.resume();byId('exit').onclick=()=>location.reload();
+  let saved='ru';try{saved=localStorage.lang||'ru';}catch{}language(saved);
+}

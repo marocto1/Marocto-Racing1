@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';import {browserPath,browserArgs} from './scripts/browser.mjs';
+export default defineConfig({testDir:'./tests/browser',timeout:60000,workers:1,fullyParallel:false,reporter:'list',use:{baseURL:'http://127.0.0.1:4173',viewport:{width:844,height:390},hasTouch:true,launchOptions:{executablePath:await browserPath(),args:browserArgs},screenshot:'only-on-failure'},webServer:{command:'npm run dev',url:'http://127.0.0.1:4173',reuseExistingServer:!process.env.CI,timeout:20000}});
