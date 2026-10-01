@@ -1,0 +1,9 @@
+{
+  "appId": "com.marocto.racing",
+  "appName": "Marocto Racing",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": false
+  }
+}
