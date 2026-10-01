@@ -6,3 +6,5 @@ artifacts/
 *.apk
 
 .cache-browser/
+
+.racing-signing/

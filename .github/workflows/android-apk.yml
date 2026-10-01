@@ -33,13 +33,13 @@ jobs:
         run: npm run check && npm test
       - name: Verify two-player race in Chromium
         run: npm run test:browser
-      - name: Generate and sync Android project
-        run: npm run android:prepare
       - name: Preserve debug signing key between builds
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: marocto-racing-debug-signing-v1
+          path: .racing-signing/debug.keystore
+          key: marocto-racing-debug-signing-v2
+      - name: Generate and sync Android project
+        run: npm run android:prepare
       - name: Build debug APK
         working-directory: android
         run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
