@@ -1,0 +1,84 @@
+name: Build MW2005 Grip Phase 6
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [physics-nfsmw-experimental]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-mw2005-grip-phase6:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Phase 6 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check all modules
+        run: npm run check
+
+      - name: Run all physics and regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 6 EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Grip-Phase6-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload Phase 6 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Grip-Phase6
+          path: dist/Marocto-Racing-PC-v1.4.0-MW2005-Grip-Phase6-x64.exe
+          retention-days: 30
+
+      - name: Publish Phase 6 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-grip-phase6
+          target_commitish: physics-nfsmw-experimental
+          name: Marocto Racing v1.4.0 - MW2005 Grip & Drivetrain Phase 6
+          prerelease: true
+          body: |
+            Separate experimental build. Stable `main` and Phases 2-5 remain unchanged.
+
+            Phase 6 keeps the Phase 5 four-wheel suspension and focuses on controllable road handling:
+            - progressive keyboard steering command instead of instant full input
+            - high-speed steering shaping
+            - traction control from driven-wheel slip
+            - throttle intervention without removing wheelspin entirely
+            - ABS-style service-brake release after lock detection
+            - ESC-like yaw-rate correction for unintended snap-oversteer
+            - lateral-velocity recovery to stop endless fishtailing
+            - deep drift-friction state is no longer entered by ordinary road cornering
+            - explicit handbrake drift remains available
+            - spin catch at very large unintended slip angles
+            - TCS / ABS / ESC diagnostics in the race HUD
+            - regression tests for assists and complete AI laps on RWD M3 GTR and AWD Evo VIII profiles
+
+            Phase 6 is a road-focused control layer over Marocto Racing's existing MW-family planar WebGL2 physics adaptation. It does not claim to be the original EA executable.
+
+            Underlying adapted MW-family source remains MPL-2.0.
+            Upstream reference: https://github.com/gaycoderprincess/UndercoverMWPhysics
+          files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Grip-Phase6-x64.exe
+          overwrite_files: true
