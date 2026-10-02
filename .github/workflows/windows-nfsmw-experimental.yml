@@ -55,19 +55,24 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: pc-nfsmw-experimental
-          name: Marocto Racing v1.4.0 - NFSMW Physics Experimental
+          name: Marocto Racing v1.4.0 - NFSMW Physics Experimental Phase 2
           prerelease: true
           body: |
             Experimental handling branch. Main v1.4.0 remains unchanged.
 
-            Phase 1 NFSMW-style reconstruction:
-            - automatic 6-speed gearbox and RPM
-            - arcade torque curve
-            - speed-sensitive steering
-            - nonlinear tire slip and stability assist
-            - handbrake drift
-            - surface grip and N2O integration
+            Phase 2 NFSMW-style reconstruction:
+            - automatic 6-speed gearbox, RPM and kickdown
+            - broad arcade torque curve and N2O drivetrain integration
+            - speed-sensitive steering with retained high-speed corner authority
+            - longitudinal weight transfer under acceleration and braking
+            - separate front/rear axle grip budgets
+            - AWD and RWD behaviour by vehicle class
+            - nonlinear tire saturation and progressive breakaway
+            - throttle oversteer and freer handbrake drift
+            - yaw/slip stability assist that fades at real drift angles
+            - TCS/ABS-like arcade assists
+            - surface-dependent grip retained
 
-            This is not yet byte-for-byte EA Black Box physics. Exact calibration requires traces generated from a compatible, legally obtained NFSMW 2005 Xbox 360 default.xex via nfsmw-nx.
+            This is still a reconstruction, not byte-for-byte EA Black Box physics. Exact calibration requires traces produced from a compatible, legally obtained NFSMW 2005 Xbox 360 default.xex through nfsmw-nx.
           files: dist/Marocto-Racing-PC-v1.4.0-NFSMW-Physics-Experimental-x64.exe
           overwrite_files: true
