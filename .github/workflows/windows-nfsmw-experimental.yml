@@ -1,0 +1,73 @@
+name: Build NFSMW Physics Experimental
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [physics-nfsmw-experimental]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-nfsmw-experimental:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout experimental branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check modules
+        run: npm run check
+
+      - name: Run original and NFSMW experimental physics tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare experimental EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-NFSMW-Physics-Experimental-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB"
+
+      - name: Upload experimental EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-NFSMW-Physics-Experimental
+          path: dist/Marocto-Racing-PC-v1.4.0-NFSMW-Physics-Experimental-x64.exe
+          retention-days: 30
+
+      - name: Publish experimental release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-nfsmw-experimental
+          name: Marocto Racing v1.4.0 - NFSMW Physics Experimental
+          prerelease: true
+          body: |
+            Experimental handling branch. Main v1.4.0 remains unchanged.
+
+            Phase 1 NFSMW-style reconstruction:
+            - automatic 6-speed gearbox and RPM
+            - arcade torque curve
+            - speed-sensitive steering
+            - nonlinear tire slip and stability assist
+            - handbrake drift
+            - surface grip and N2O integration
+
+            This is not yet byte-for-byte EA Black Box physics. Exact calibration requires traces generated from a compatible, legally obtained NFSMW 2005 Xbox 360 default.xex via nfsmw-nx.
+          files: dist/Marocto-Racing-PC-v1.4.0-NFSMW-Physics-Experimental-x64.exe
+          overwrite_files: true
