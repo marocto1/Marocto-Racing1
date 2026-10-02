@@ -47,10 +47,14 @@ export class Track {
   updateProgress(car,dt){
     const p=car.progress;p.lapTime+=dt;p.checkpointTime+=dt;
     const g=this.gates[p.next],old=(car.prevX-g.x)*g.tx+(car.prevZ-g.z)*g.tz,now=(car.x-g.x)*g.tx+(car.z-g.z)*g.tz;
-    if(old<=0&&now>0){
-      const t=-old/(now-old),x=car.prevX+(car.x-car.prevX)*t,z=car.prevZ+(car.z-car.prevZ)*t,lat=(x-g.x)*g.nx+(z-g.z)*g.nz;
-      // Cross the finite gate forward, on the circuit, in order. Never distance/timer laps.
-      if(Math.abs(lat)<=this.halfWidth+1&&Math.hypot(car.x-car.prevX,car.z-car.prevZ)<8){
+    const moveX=car.x-car.prevX,moveZ=car.z-car.prevZ,travel=Math.hypot(moveX,moveZ),forward=moveX*g.tx+moveZ*g.tz;
+    // A checkpoint spans the complete legal corridor between the barriers, not only the asphalt.
+    // This prevents a valid lap from getting permanently stuck after crossing a gate on a curb/shoulder.
+    if(old<=0&&now>0&&forward>0){
+      const t=-old/(now-old),x=car.prevX+moveX*t,z=car.prevZ+moveZ*t,lat=(x-g.x)*g.nx+(z-g.z)*g.nz;
+      const vehicleHalf=car.spec?Math.max(.75,car.spec.width*.5):1,gateHalf=this.barrierOffset-vehicleHalf-.15;
+      // Gates still have to be crossed forward, in order, without teleporting.
+      if(Math.abs(lat)<=gateHalf&&travel<8){
         p.lastGate=p.next;p.checkpointTime=0;
         if(p.next===0){p.completed++;p.best=Math.min(p.best,p.lapTime);p.lapTime=0;}
         p.next=(p.next+1)%this.gates.length;return true;
