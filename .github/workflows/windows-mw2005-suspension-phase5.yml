@@ -1,0 +1,86 @@
+name: Build MW2005 Suspension Phase 5
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [physics-nfsmw-experimental]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-mw2005-suspension-phase5:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Phase 5 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check all modules
+        run: npm run check
+
+      - name: Run all physics and regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 5 EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Suspension-Phase5-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload Phase 5 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Suspension-Phase5
+          path: dist/Marocto-Racing-PC-v1.4.0-MW2005-Suspension-Phase5-x64.exe
+          retention-days: 30
+
+      - name: Publish Phase 5 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-suspension-phase5
+          target_commitish: physics-nfsmw-experimental
+          name: Marocto Racing v1.4.0 - MW2005 Suspension Physics Phase 5
+          prerelease: true
+          body: |
+            Separate experimental build. Stable `main` and previous MW physics phases remain unchanged.
+
+            Phase 5 builds on the Phase 4 four-wheel solver and adds the public MPL-2.0 MW-family suspension model:
+            - original per-car ride height and suspension travel
+            - original compression and rebound shock stiffness
+            - original shock valving and digression
+            - original spring progression formula
+            - original front/rear anti-roll-bar stiffness
+            - shock blowout threshold handling
+            - independent FL / FR / RL / RR suspension compression and velocity
+            - suspension forces feed actual per-wheel tire load and therefore grip
+            - physical body heave, roll and pitch state
+            - braking dive / acceleration squat / cornering roll
+            - deterministic asphalt roughness, grass/snow roughness and raised rumble curbs
+            - wheel vertical animation from real suspension travel
+            - bottom-out / airborne diagnostics
+            - full-lap AI regression tests on RWD M3 GTR and AWD Evo VIII profiles
+
+            This remains Marocto Racing's planar WebGL2 rigid body and collision system; it is an adaptation of the recovered MW model rather than the original EA engine executable.
+
+            Adapted source is MPL-2.0 in `physics-nfsmw-experimental`.
+            Upstream reference: https://github.com/gaycoderprincess/UndercoverMWPhysics
+          files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Suspension-Phase5-x64.exe
+          overwrite_files: true
