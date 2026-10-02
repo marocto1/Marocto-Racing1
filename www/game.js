@@ -3,7 +3,7 @@ import {Geometry} from './geometry.js';
 import {Engine,ChaseCamera,modelMatrix} from './engine.js';
 import {CAR_SPECS,buildCar} from './cars.js';
 import {Track} from './track.js';
-import {createVehicle,stepVehicle,collideBarrier,collideCars,resetVehicle,FIXED_DT,PHYSICS_PROFILE} from './physics-mw2005-wheel4.js';
+import {createVehicle,stepVehicle,collideBarrier,collideCars,resetVehicle,FIXED_DT,PHYSICS_PROFILE} from './physics-mw2005-suspension.js';
 import {InputManager} from './input.js';
 import {createAIController,AI_LEVELS} from './ai.js';
 import {initUI,strings} from './ui.js';
@@ -29,19 +29,19 @@ const MR=window.MR={
   preview(p){if(!E)return;previewPlayer=p;mode='preview';previewCar.a=.40;previewCamera.initialized=false;document.querySelector('#garage-preview').appendChild(canvas);},
   closePreview(){if(mode==='preview')mode='menu';},
   resume(){if(mode==='race'&&winner<0){running=true;last=0;input.setEnabled(true);document.querySelector('#pause').classList.remove('show');}},
-  getDiagnostics(){return {version:'1.4.0-mw-four-wheel-phase4',physics:PHYSICS_PROFILE,platform:platform.pc?'pc':'touch',layout:'single',mode,running,countdown,winner,aiLevel:AI_LEVELS[aiLevel].id,trackLength:track.length,checkpoints:track.gates.length,quality:E?.quality,drawCalls:E?.drawCalls,triangles:E?.triangles,frameMs:E?.frameEMA,vehicles:S.map(s=>({p:s.p,x:s.x,z:s.z,a:s.a,vx:s.vx,vz:s.vz,steer:s.steerAngle,wheelSpin:s.wheelSpin,surface:s.surface,n:s.n,gear:s.gear,rpm:s.rpm,slipAngle:s.slipAngle,drift:s.driftValue,traction:s.traction,driveLayout:s.driveLayout,mwSource:s.mwSource,wheelModel:s.wheelModel,wheels:s.wheels?.map(w=>({name:w.name,steer:w.steer,load:w.load,omega:w.omega,slipSpeed:w.slipSpeed,slipAngle:w.slipAngle,traction:w.traction,brakeLocked:w.brakeLocked,driveTorque:w.driveTorque,brakeTorque:w.brakeTorque,surface:w.surface})),lap:s.progress.completed,next:s.progress.next,collisions:s.collisionCount})),cameras:cameras.map(c=>({x:c.x,z:c.z,dx:c.dx,dz:c.dz}))};}
+  getDiagnostics(){return {version:'1.4.0-mw-suspension-phase5',physics:PHYSICS_PROFILE,platform:platform.pc?'pc':'touch',layout:'single',mode,running,countdown,winner,aiLevel:AI_LEVELS[aiLevel].id,trackLength:track.length,checkpoints:track.gates.length,quality:E?.quality,drawCalls:E?.drawCalls,triangles:E?.triangles,frameMs:E?.frameEMA,vehicles:S.map(s=>({p:s.p,x:s.x,z:s.z,a:s.a,vx:s.vx,vz:s.vz,steer:s.steerAngle,wheelSpin:s.wheelSpin,surface:s.surface,n:s.n,gear:s.gear,rpm:s.rpm,slipAngle:s.slipAngle,drift:s.driftValue,traction:s.traction,driveLayout:s.driveLayout,mwSource:s.mwSource,wheelModel:s.wheelModel,suspension:s.suspension?{model:s.suspension.model,heave:s.suspension.heave,roll:s.suspension.roll,pitch:s.suspension.pitch,wheelsOnGround:s.suspension.wheelsOnGround,maxTravelUse:s.suspension.maxTravelUse,bottomOuts:s.suspension.bottomOuts}:null,wheels:s.wheels?.map(w=>({name:w.name,steer:w.steer,load:w.load,omega:w.omega,slipSpeed:w.slipSpeed,slipAngle:w.slipAngle,traction:w.traction,brakeLocked:w.brakeLocked,driveTorque:w.driveTorque,brakeTorque:w.brakeTorque,surface:w.surface,compression:w.suspensionCompression,travel:w.travel,springForce:w.suspensionSpringForce,damperForce:w.suspensionDamperForce,swayForce:w.swayForce,bottomed:w.bottomed,airborne:w.airborne})),lap:s.progress.completed,next:s.progress.next,collisions:s.collisionCount})),cameras:cameras.map(c=>({x:c.x,z:c.z,dx:c.dx,dz:c.dz}))};}
 };
 if(new URLSearchParams(location.search).has('debug'))MR.debug={track,input,get states(){return S;},get engine(){return E;},advance(seconds){for(let t=0;t<seconds;t+=FIXED_DT)simulate(FIXED_DT);},skipCountdown(){countdown=0;countdownEl.textContent='';}};
 function drawVehicle(vp,s,index){
-  const model=models[index];modelMatrix(E.model,s.x,.01,s.z,s.a,s.roll,s.pitch);E.draw(model.body,vp,E.model);
+  const model=models[index],bodyY=.01+(s.bodyHeave||0);modelMatrix(E.model,s.x,bodyY,s.z,s.a,s.roll,s.pitch);E.draw(model.body,vp,E.model);
   const sin=Math.sin(s.a),cos=Math.cos(s.a);
   for(let side=-1;side<=1;side+=2)for(let axle=-1;axle<=1;axle+=2){
     const x=side*model.wheelX,z=axle*model.wheelZ;
     const wi=axle===1?(side<0?0:1):(side<0?2:3),wheel=s.wheels?.[wi];
-    const steer=wheel?.steer??(axle===1?s.steerAngle:0),spin=wheel?.spin??s.wheelSpin;
-    modelMatrix(E.model,s.x+x*cos+z*sin,.36,s.z-x*sin+z*cos,s.a+steer,0,spin);E.draw(model.wheel,vp,E.model);
+    const steer=wheel?.steer??(axle===1?s.steerAngle:0),spin=wheel?.spin??s.wheelSpin,wheelY=.36+(wheel?.visualY||0);
+    modelMatrix(E.model,s.x+x*cos+z*sin,wheelY,s.z-x*sin+z*cos,s.a+steer,0,spin);E.draw(model.wheel,vp,E.model);
   }
-  if(s.boost){modelMatrix(E.model,s.x-sin*(s.spec.length*.5+.35),.34,s.z-cos*(s.spec.length*.5+.35),s.a);E.draw(world.flame,vp,E.model);}
+  if(s.boost){modelMatrix(E.model,s.x-sin*(s.spec.length*.5+.35),.34+bodyY,s.z-cos*(s.spec.length*.5+.35),s.a);E.draw(world.flame,vp,E.model);}
 }
 function renderScene(vp,car){
   E.draw(world.ground,vp);E.draw(world.finish,vp);
@@ -61,8 +61,8 @@ function updateHUD(){
   const text=strings(),level=AI_LEVELS[aiLevel].name;
   for(let p=0;p<2;p++){const s=S[p],pr=s.progress,label=p===0?'YOU':`AI ${level}`,gear=s.gear<0?'R':s.gear;
     hud[p].textContent=`${label}  ${Math.round(Math.hypot(s.vx,s.vz)*3.6)} ${text.kmh}  ·  G${gear} ${Math.round(s.rpm||0)} RPM  ·  ${text.lap} ${Math.min(pr.completed+1,lapGoal)}/${lapGoal}  ·  CP ${pr.next||24}/24  ·  N₂O ${Math.ceil(s.n)}%`;
-    const locked=s.wheels?.filter(w=>w.brakeLocked).length||0;
-    document.querySelector('#status'+p).textContent=`${text[s.surface]} · ${(s.driftValue||0)>.15||s.handbrake?text.drift:(s.longitudinal<-.5?text.reverse:text.drive)} · ${s.driveLayout||''}${locked?` · LOCK ${locked}`:''}`;
+    const locked=s.wheels?.filter(w=>w.brakeLocked).length||0,air=s.wheels?.filter(w=>w.airborne).length||0;
+    document.querySelector('#status'+p).textContent=`${text[s.surface]} · ${(s.driftValue||0)>.15||s.handbrake?text.drift:(s.longitudinal<-.5?text.reverse:text.drive)} · ${s.driveLayout||''}${locked?` · LOCK ${locked}`:''}${air?` · AIR ${air}`:''}`;
   }
   map.clearRect(0,0,150,110);map.lineWidth=6;map.strokeStyle='#a3acb6';map.stroke(mapPath);map.lineWidth=3;map.strokeStyle='#28353a';map.stroke(mapPath);
   for(let p=0;p<2;p++){const s=S[p],gate=track.gates[s.progress.next];map.fillStyle=p===0?'#53a8ff':'#ffac54';map.beginPath();map.arc((s.x+210)*.32,(s.z+210)*.23,3,0,Math.PI*2);map.fill();map.fillRect((gate.x+210)*.32-1,(gate.z+210)*.23-1,3,3);}
