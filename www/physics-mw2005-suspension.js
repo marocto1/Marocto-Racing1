@@ -58,13 +58,17 @@ function damperForce(rise,chassis,axle,mass){
 }
 function roadHeight(surface,contact,x,z){
   const s=contact?.s||0;
-  if(surface==='curb')return .030+.011*Math.sin(s*1.85)+.005*Math.sin(s*4.1);
-  if(surface==='grass')return .008*Math.sin(x*.73+z*.31)+.006*Math.sin(z*.91-x*.27);
-  if(surface==='snow')return .005*Math.sin(x*.31-z*.25)+.004*Math.sin((x+z)*.57);
-  return .0015*Math.sin(x*.19+z*.13)+.0010*Math.sin(z*.47-x*.11);
+  // The visible curb in Marocto Racing is lower than MW's full 3D road
+  // collision geometry. Keep the recovered suspension response but feed it a
+  // road-height signal matching our actual track mesh so it does not behave as
+  // if every rumble strip were a large step.
+  if(surface==='curb')return .019+.006*Math.sin(s*1.85)+.003*Math.sin(s*4.1);
+  if(surface==='grass')return .006*Math.sin(x*.73+z*.31)+.004*Math.sin(z*.91-x*.27);
+  if(surface==='snow')return .004*Math.sin(x*.31-z*.25)+.003*Math.sin((x+z)*.57);
+  return .0012*Math.sin(x*.19+z*.13)+.0008*Math.sin(z*.47-x*.11);
 }
 function axisStep(pos,vel,target,omega,dt){
-  const zeta=.82,acc=(target-pos)*omega*omega-2*zeta*omega*vel;
+  const zeta=.86,acc=(target-pos)*omega*omega-2*zeta*omega*vel;
   vel+=acc*dt;pos+=vel*dt;return [pos,vel];
 }
 function wheelWorld(car,w){
@@ -110,18 +114,25 @@ function prepareSuspensionLoads(car,track,dt){
   }
   roadMean*=.25;sus.roadMean=roadMean;
   const left=(roads[0]+roads[2])*.5,right=(roads[1]+roads[3])*.5,front=(roads[0]+roads[1])*.5,rear=(roads[2]+roads[3])*.5;
-  sus.heaveTarget=clamp(-roadMean*.28+Math.abs(car.latAccel||0)*.00015,-.025,.035);
-  sus.rollTarget=clamp(-(car.latAccel||0)/G*.045+(right-left)/tw*.85,-.13,.13);
-  sus.pitchTarget=clamp((car.longAccel||0)/G*.034+(front-rear)/wb*.65,-.09,.09);
+  // Phase 4 already performs longitudinal/lateral load transfer. These body
+  // angles describe compliant suspension motion, not another full geometric
+  // copy of the same load transfer. Limiting them to realistic road-car
+  // ranges prevents a 1 g corner from consuming the entire 6.5-8 inch travel.
+  sus.heaveTarget=clamp(-roadMean*.20+Math.abs(car.latAccel||0)*.00008,-.016,.022);
+  sus.rollTarget=clamp(-(car.latAccel||0)/G*.024+(right-left)/tw*.42,-.060,.060);
+  sus.pitchTarget=clamp((car.longAccel||0)/G*.021+(front-rear)/wb*.38,-.050,.050);
   const omega=sus.naturalFrequency;
-  [sus.heave,sus.heaveVel]=axisStep(sus.heave,sus.heaveVel,sus.heaveTarget,omega*.72,dt);
-  [sus.roll,sus.rollVel]=axisStep(sus.roll,sus.rollVel,sus.rollTarget,omega*.63,dt);
-  [sus.pitch,sus.pitchVel]=axisStep(sus.pitch,sus.pitchVel,sus.pitchTarget,omega*.68,dt);
-  sus.heave=clamp(sus.heave,-.045,.055);sus.roll=clamp(sus.roll,-.16,.16);sus.pitch=clamp(sus.pitch,-.11,.11);
+  [sus.heave,sus.heaveVel]=axisStep(sus.heave,sus.heaveVel,sus.heaveTarget,omega*.68,dt);
+  [sus.roll,sus.rollVel]=axisStep(sus.roll,sus.rollVel,sus.rollTarget,omega*.58,dt);
+  [sus.pitch,sus.pitchVel]=axisStep(sus.pitch,sus.pitchVel,sus.pitchTarget,omega*.62,dt);
+  sus.heave=clamp(sus.heave,-.025,.032);sus.roll=clamp(sus.roll,-.075,.075);sus.pitch=clamp(sus.pitch,-.065,.065);
 
   const raw=new Array(4),comp=new Array(4),rise=new Array(4),spring=new Array(4),damp=new Array(4);
   for(const w of car.wheels){
-    const bodyDown=sus.heave-sus.roll*w.x+sus.pitch*w.z;
+    // Roll/pitch are body angles, but Phase 4 already accounts for much of the
+    // corresponding tire load transfer. Feed only the compliant portion into
+    // spring travel to avoid double-counting the same acceleration twice.
+    const bodyDown=sus.heave-sus.roll*w.x*.52+sus.pitch*w.z*.60;
     raw[w.index]=w.restCompression+roads[w.index]+bodyDown;
     comp[w.index]=clamp(raw[w.index],0,w.travel);
     rise[w.index]=(comp[w.index]-w.suspensionCompression)/Math.max(dt,1e-5);
@@ -133,31 +144,31 @@ function prepareSuspensionLoads(car,track,dt){
   sway[2]=(comp[2]-comp[3])*(ch.sway[1]*LBIN_TO_NM);sway[3]=-sway[2];
   let onGround=0,maxUse=0;
   for(const w of car.wheels){
-    const i=w.index,over=Math.max(0,raw[i]-w.travel),bottom=over*(ch.springs[w.axle]*LBIN_TO_NM)*12;
+    const i=w.index,over=Math.max(0,raw[i]-w.travel),bottom=over*(ch.springs[w.axle]*LBIN_TO_NM)*6;
     let force=Math.max(0,spring[i]+damp[i]+sway[i]+bottom);
-    const maxForce=weight*.72;force=clamp(force,0,maxForce);
+    const maxForce=weight*.52;force=clamp(force,0,maxForce);
     w.prevSuspensionCompression=w.suspensionCompression;w.suspensionCompression=comp[i];w.suspensionVelocity=rise[i];
     w.suspensionSpringForce=spring[i];w.suspensionDamperForce=damp[i];w.swayForce=sway[i];w.suspensionForce=force;
     w.roadHeight=roads[i];w.bottomed=over>1e-4;if(w.bottomed)sus.bottomOuts++;
     w.airborne=raw[i]<=0;w.surface=contacts[i].surface;w.contact=contacts[i];if(!w.airborne)onGround++;
     maxUse=Math.max(maxUse,comp[i]/Math.max(.001,w.travel));
-    // Feed the physically resolved spring/damper load into Phase 4. Its own
-    // load-transfer filter only nudges this value, so tire grip still responds
-    // to the suspension state in the same simulation step.
-    w.load=lerp(w.load,force,.92);
+    // Blend the real spring/damper force with Phase 4's already-proven load
+    // transfer instead of replacing it almost completely. Suspension still
+    // changes grip, while the race remains controllable on the existing track.
+    w.load=lerp(w.load,force,.70);
   }
   sus.wheelsOnGround=onGround;sus.maxTravelUse=maxUse;
 }
 function finishSuspensionFrame(car){
   const sus=car.suspension,phaseRoll=car.roll,phasePitch=car.pitch;
   car.bodyHeave=-sus.heave;
-  car.roll=clamp(sus.roll+phaseRoll*.18,-.18,.18);
-  car.pitch=clamp(sus.pitch+phasePitch*.18,-.13,.13);
+  car.roll=clamp(sus.roll+phaseRoll*.14,-.10,.10);
+  car.pitch=clamp(sus.pitch+phasePitch*.14,-.085,.085);
   for(const w of car.wheels){
     // Phase 4 uses compression as a temporary load proxy; expose the real
     // suspension compression again after the tire solve.
     w.compression=w.suspensionCompression;
-    w.visualY=w.roadHeight*.72+(w.suspensionCompression-w.restCompression)*.42-sus.heave*.25;
+    w.visualY=w.roadHeight*.68+(w.suspensionCompression-w.restCompression)*.36-sus.heave*.22;
   }
 }
 
