@@ -1,9 +1,7 @@
-name: Build NFSMW Physics Experimental
+name: Build NFSMW Physics Experimental Phase 2
 
 on:
   workflow_dispatch:
-  push:
-    branches: [physics-nfsmw-experimental]
 
 permissions:
   contents: write
@@ -28,13 +26,13 @@ jobs:
       - name: Check modules
         run: npm run check
 
-      - name: Run original and NFSMW experimental physics tests
+      - name: Run physics tests
         run: npm test
 
       - name: Build Windows portable EXE
         run: npm run pc:build
 
-      - name: Prepare experimental EXE
+      - name: Prepare Phase 2 EXE
         shell: pwsh
         run: |
           $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
@@ -42,37 +40,12 @@ jobs:
           Copy-Item $source $target -Force
           $exe = Get-Item $target
           if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
-          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB"
 
-      - name: Upload experimental EXE artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Marocto-Racing-NFSMW-Physics-Experimental
-          path: dist/Marocto-Racing-PC-v1.4.0-NFSMW-Physics-Experimental-x64.exe
-          retention-days: 30
-
-      - name: Publish experimental release
+      - name: Publish Phase 2 release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: pc-nfsmw-experimental
           name: Marocto Racing v1.4.0 - NFSMW Physics Experimental Phase 2
           prerelease: true
-          body: |
-            Experimental handling branch. Main v1.4.0 remains unchanged.
-
-            Phase 2 NFSMW-style reconstruction:
-            - automatic 6-speed gearbox, RPM and kickdown
-            - broad arcade torque curve and N2O drivetrain integration
-            - speed-sensitive steering with retained high-speed corner authority
-            - longitudinal weight transfer under acceleration and braking
-            - separate front/rear axle grip budgets
-            - AWD and RWD behaviour by vehicle class
-            - nonlinear tire saturation and progressive breakaway
-            - throttle oversteer and freer handbrake drift
-            - yaw/slip stability assist that fades at real drift angles
-            - TCS/ABS-like arcade assists
-            - surface-dependent grip retained
-
-            This is still a reconstruction, not byte-for-byte EA Black Box physics. Exact calibration requires traces produced from a compatible, legally obtained NFSMW 2005 Xbox 360 default.xex through nfsmw-nx.
           files: dist/Marocto-Racing-PC-v1.4.0-NFSMW-Physics-Experimental-x64.exe
           overwrite_files: true
