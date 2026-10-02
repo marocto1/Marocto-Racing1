@@ -1,0 +1,89 @@
+name: Build MW2005 Real Port
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [physics-nfsmw-experimental]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-mw2005-real-port:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout real-port branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check all modules
+        run: npm run check
+
+      - name: Run original, Phase 2 and real-port physics tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Real MW Port EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Real-Port-Phase3-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload Real MW Port artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Real-Port-Phase3
+          path: dist/Marocto-Racing-PC-v1.4.0-MW2005-Real-Port-Phase3-x64.exe
+          retention-days: 30
+
+      - name: Publish Real MW Port prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-real-port
+          target_commitish: physics-nfsmw-experimental
+          name: Marocto Racing v1.4.0 - MW2005 Real Physics Port Phase 3
+          prerelease: true
+          body: |
+            Separate experimental build. Stable Marocto Racing v1.4.0 on `main` is unchanged.
+
+            Phase 3 switches the playable game from the earlier MW-inspired reconstruction to a direct 2D adaptation of the public MPL-2.0 UndercoverMWPhysics implementation and original Black Box handling datasets.
+
+            Directly adapted MW systems now used by the race runtime:
+            - original MW torque-curve interpolation
+            - per-car original gearbox ratios, final drive, torque split and shift delay
+            - shift points calculated by comparing current-gear and next-gear torque
+            - original speed-dependent steering range/speed tables
+            - original load-sensitive lateral tire force tables
+            - original grip-vs-speed and traction-vs-speed tables
+            - per-car static/dynamic grip, steering and yaw-control values
+            - original brake/handbrake torque constants and per-car brake data
+            - original aero drag/downforce parameters
+            - original yaw-control and drift rear-friction tables adapted to the flat rigid body
+            - RWD/AWD/FWD torque split from the Black Box datasets
+            - M3 GTR, Supra, RX-7, Evo VIII and 911 Turbo use MW2005 data; the R34-inspired car uses the Carbon Skyline dataset from the same upstream MW-family port
+
+            Marocto Racing still uses its own WebGL2 renderer, track, collisions and simplified flat rigid-body integration, so this is a direct adaptation rather than a byte-for-byte execution of the original EA engine.
+
+            MPL-2.0 source notice and adapted source are available in the public `physics-nfsmw-experimental` branch:
+            https://github.com/marocto1/Marocto-Racing1/tree/physics-nfsmw-experimental
+
+            Upstream MPL-2.0 project:
+            https://github.com/gaycoderprincess/UndercoverMWPhysics
+          files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Real-Port-Phase3-x64.exe
+          overwrite_files: true
