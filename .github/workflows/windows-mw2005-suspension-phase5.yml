@@ -2,8 +2,6 @@ name: Build MW2005 Suspension Phase 5
 
 on:
   workflow_dispatch:
-  push:
-    branches: [physics-nfsmw-experimental]
 
 permissions:
   contents: write
