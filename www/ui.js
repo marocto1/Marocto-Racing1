@@ -23,7 +23,9 @@ export function initUI(racing){MR=racing;
   byId('tab0').onclick=()=>player(0);byId('tab1').onclick=()=>player(1);byId('ailevel').value=String(MR.getAILevel());byId('ailevel').onchange=e=>MR.setAILevel(Number(e.target.value));
   const go=()=>{byId('garage').classList.remove('open');MR.start(byId('laps').value);};byId('racebtn').onclick=go;byId('rematch').onclick=go;
   byId('set').onclick=()=>byId('settings').classList.add('open');byId('back2').onclick=()=>byId('settings').classList.remove('open');byId('lang').onchange=e=>language(e.target.value);
-  for(const id of ['quit','finishmenu','pausemenu'])byId(id).onclick=()=>MR.stop();byId('resume').onclick=()=>MR.resume();byId('exit').onclick=()=>window.racingDesktop?window.racingDesktop.quit():location.reload();
+  // The in-race MENU button now opens the pause panel instead of instantly throwing the player to the title screen.
+  byId('quit').onclick=()=>{const d=MR.getDiagnostics();if(d.mode==='race'&&d.winner<0){if(d.running)MR.pause();else MR.resume();}};
+  for(const id of ['finishmenu','pausemenu'])byId(id).onclick=()=>MR.stop();byId('resume').onclick=()=>MR.resume();byId('exit').onclick=()=>window.racingDesktop?window.racingDesktop.quit():location.reload();
   byId('inputmode').value=platform.controls;byId('inputmode').onchange=e=>platform.setControls(e.target.value);byId('fullscreen').onclick=fullscreen;
   window.addEventListener('keydown',e=>{if(e.repeat&&(e.code==='F11'||e.code==='Escape'))return;if(e.code==='F11'){e.preventDefault();fullscreen();}if(e.code==='Escape'){e.preventDefault();if(byId('settings').classList.contains('open'))byId('settings').classList.remove('open');else if(byId('garage').classList.contains('open')){byId('garage').classList.remove('open');MR.closePreview();}else {const d=MR.getDiagnostics();if(d.mode==='race'){if(d.winner>=0)MR.stop();else if(d.running)MR.pause();else MR.resume();}}}});
   let saved='ru';try{saved=localStorage.lang||'ru';}catch{}language(saved);
