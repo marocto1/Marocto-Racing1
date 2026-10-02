@@ -33,7 +33,7 @@ const DEG=Math.PI/180;
 const DEFAULTS={
   steerRise:4.4,
   steerReturn:7.5,
-  steerHighSpeedScale:.82,
+  steerHighSpeedScale:.70,
   tcsSlipStart:.12,
   tcsSlipFull:.52,
   tcsMinThrottle:.34,
@@ -173,7 +173,7 @@ function stabilizeRoadCar(car,originalInput,dt){
   const p=car.phase6,handbrake=(originalInput.handbrake||0)>.5;
   let {forward,lateral}=bodyVelocity(car);
   const speed=Math.hypot(forward,lateral),slip=Math.abs(forward)<.8?0:Math.atan2(lateral,Math.abs(forward));
-  const absSlip=Math.abs(slip),steer=Math.abs(originalInput.steer||0);
+  const absSlip=Math.abs(slip);
   p.slipAngle=slip;p.escActive=false;
 
   if(!handbrake){
