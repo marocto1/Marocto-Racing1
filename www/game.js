@@ -3,7 +3,7 @@ import {Geometry} from './geometry.js';
 import {Engine,ChaseCamera,modelMatrix} from './engine.js';
 import {CAR_SPECS,buildCar} from './cars.js';
 import {Track} from './track.js';
-import {createVehicle,stepVehicle,collideBarrier,collideCars,resetVehicle,FIXED_DT,PHYSICS_PROFILE} from './physics-nfsmw.js';
+import {createVehicle,stepVehicle,collideBarrier,collideCars,resetVehicle,FIXED_DT,PHYSICS_PROFILE} from './physics-mw2005.js';
 import {InputManager} from './input.js';
 import {createAIController,AI_LEVELS} from './ai.js';
 import {initUI,strings} from './ui.js';
@@ -29,7 +29,7 @@ const MR=window.MR={
   preview(p){if(!E)return;previewPlayer=p;mode='preview';previewCar.a=.40;previewCamera.initialized=false;document.querySelector('#garage-preview').appendChild(canvas);},
   closePreview(){if(mode==='preview')mode='menu';},
   resume(){if(mode==='race'&&winner<0){running=true;last=0;input.setEnabled(true);document.querySelector('#pause').classList.remove('show');}},
-  getDiagnostics(){return {version:'1.4.0-nfsmw-exp',physics:PHYSICS_PROFILE,platform:platform.pc?'pc':'touch',layout:'single',mode,running,countdown,winner,aiLevel:AI_LEVELS[aiLevel].id,trackLength:track.length,checkpoints:track.gates.length,quality:E?.quality,drawCalls:E?.drawCalls,triangles:E?.triangles,frameMs:E?.frameEMA,vehicles:S.map(s=>({p:s.p,x:s.x,z:s.z,a:s.a,vx:s.vx,vz:s.vz,steer:s.steerAngle,wheelSpin:s.wheelSpin,surface:s.surface,n:s.n,gear:s.gear,rpm:s.rpm,slipAngle:s.slipAngle,lap:s.progress.completed,next:s.progress.next,collisions:s.collisionCount})),cameras:cameras.map(c=>({x:c.x,z:c.z,dx:c.dx,dz:c.dz}))};}
+  getDiagnostics(){return {version:'1.4.0-mw-real-port',physics:PHYSICS_PROFILE,platform:platform.pc?'pc':'touch',layout:'single',mode,running,countdown,winner,aiLevel:AI_LEVELS[aiLevel].id,trackLength:track.length,checkpoints:track.gates.length,quality:E?.quality,drawCalls:E?.drawCalls,triangles:E?.triangles,frameMs:E?.frameEMA,vehicles:S.map(s=>({p:s.p,x:s.x,z:s.z,a:s.a,vx:s.vx,vz:s.vz,steer:s.steerAngle,wheelSpin:s.wheelSpin,surface:s.surface,n:s.n,gear:s.gear,rpm:s.rpm,slipAngle:s.slipAngle,drift:s.driftValue,traction:s.traction,driveLayout:s.driveLayout,mwSource:s.mwSource,lap:s.progress.completed,next:s.progress.next,collisions:s.collisionCount})),cameras:cameras.map(c=>({x:c.x,z:c.z,dx:c.dx,dz:c.dz}))};}
 };
 if(new URLSearchParams(location.search).has('debug'))MR.debug={track,input,get states(){return S;},get engine(){return E;},advance(seconds){for(let t=0;t<seconds;t+=FIXED_DT)simulate(FIXED_DT);},skipCountdown(){countdown=0;countdownEl.textContent='';}};
 function drawVehicle(vp,s,index){
@@ -58,7 +58,7 @@ function updateHUD(){
   const text=strings(),level=AI_LEVELS[aiLevel].name;
   for(let p=0;p<2;p++){const s=S[p],pr=s.progress,label=p===0?'YOU':`AI ${level}`,gear=s.gear<0?'R':s.gear;
     hud[p].textContent=`${label}  ${Math.round(Math.hypot(s.vx,s.vz)*3.6)} ${text.kmh}  ·  G${gear} ${Math.round(s.rpm||0)} RPM  ·  ${text.lap} ${Math.min(pr.completed+1,lapGoal)}/${lapGoal}  ·  CP ${pr.next||24}/24  ·  N₂O ${Math.ceil(s.n)}%`;
-    document.querySelector('#status'+p).textContent=`${text[s.surface]} · ${s.handbrake?text.drift:(s.longitudinal<-.5?text.reverse:text.drive)}`;
+    document.querySelector('#status'+p).textContent=`${text[s.surface]} · ${(s.driftValue||0)>.15||s.handbrake?text.drift:(s.longitudinal<-.5?text.reverse:text.drive)} · ${s.driveLayout||''}`;
   }
   map.clearRect(0,0,150,110);map.lineWidth=6;map.strokeStyle='#a3acb6';map.stroke(mapPath);map.lineWidth=3;map.strokeStyle='#28353a';map.stroke(mapPath);
   for(let p=0;p<2;p++){const s=S[p],gate=track.gates[s.progress.next];map.fillStyle=p===0?'#53a8ff':'#ffac54';map.beginPath();map.arc((s.x+210)*.32,(s.z+210)*.23,3,0,Math.PI*2);map.fill();map.fillRect((gate.x+210)*.32-1,(gate.z+210)*.23-1,3,3);}
