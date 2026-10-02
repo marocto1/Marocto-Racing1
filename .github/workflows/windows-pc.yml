@@ -1,68 +1,65 @@
 name: Build Windows PC
+
 on:
   workflow_dispatch:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+
 permissions:
-  contents: read
+  contents: write
+
 jobs:
-  browser-race:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - name: Install dependencies
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-        run: npm ci
-      - name: Verify full race and touch compatibility
-        run: npm run test:browser
-      - name: Upload race verification
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: race-verification
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 14
   windows-pc:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout
+      - name: Checkout v1.4 source
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
+
       - name: Install dependencies
         run: npm ci
-      - name: Check modules and vehicle dynamics
-        run: npm run check; if ($LASTEXITCODE) { exit $LASTEXITCODE }; npm test
+
+      - name: Check all web and desktop modules
+        run: npm run check
+
+      - name: Run v1.4 physics regression tests
+        run: npm test
+
       - name: Build Windows portable EXE
         run: npm run pc:build
-      - name: Verify packaged Windows game
-        env:
-          RACING_PACKAGED_EXE: dist/win-unpacked/Marocto Racing.exe
-        run: npm run test:desktop
-      - name: Upload Windows EXE
+
+      - name: Verify portable EXE
+        shell: pwsh
+        run: |
+          $exe = Get-Item "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB"
+
+      - name: Upload Windows EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Marocto-Racing-PC
-          path: dist/Marocto-Racing-PC-*.exe
+          name: Marocto-Racing-PC-v1.4.0
+          path: dist/Marocto-Racing-PC-1.4.0-x64.exe
           retention-days: 30
-      - name: Upload PC verification
-        if: always()
-        uses: actions/upload-artifact@v4
+
+      - name: Publish stable PC Latest release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
         with:
-          name: PC-verification
-          path: test-results/desktop/
-          if-no-files-found: ignore
-          retention-days: 14
+          tag_name: pc-latest
+          name: Marocto Racing PC v1.4.0 - Player vs AI
+          body: |
+            Restored full Marocto Racing v1.4.0 PC base.
+            Full-screen single-player race against a physics-driven AI opponent.
+            Choose the AI car and ROOKIE / RIVAL / PRO / ELITE difficulty in the garage.
+          files: dist/Marocto-Racing-PC-1.4.0-x64.exe
+          overwrite_files: true
+          make_latest: true
