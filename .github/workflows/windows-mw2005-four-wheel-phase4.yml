@@ -1,0 +1,88 @@
+name: Build MW2005 Four Wheel Phase 4
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [physics-nfsmw-experimental]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-mw2005-four-wheel-phase4:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Phase 4 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check all modules
+        run: npm run check
+
+      - name: Run all physics and regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 4 EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Four-Wheel-Phase4-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload Phase 4 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Four-Wheel-Phase4
+          path: dist/Marocto-Racing-PC-v1.4.0-MW2005-Four-Wheel-Phase4-x64.exe
+          retention-days: 30
+
+      - name: Publish Phase 4 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-four-wheel-phase4
+          target_commitish: physics-nfsmw-experimental
+          name: Marocto Racing v1.4.0 - MW2005 Four-Wheel Physics Phase 4
+          prerelease: true
+          body: |
+            Separate experimental build. Stable `main`, Phase 2 and Phase 3 releases remain unchanged.
+
+            Phase 4 keeps the public MPL-2.0 MW2005 adaptation from Phase 3 and replaces the axle-level tire approximation with a planar four-wheel solver.
+
+            New Phase 4 systems:
+            - independent FL / FR / RL / RR wheel states
+            - independent wheel angular velocity and visual wheel spin
+            - per-wheel slip speed and slip angle
+            - per-wheel static/dynamic traction state
+            - per-wheel brake torque and brake locking
+            - rear-wheel-only handbrake
+            - longitudinal weight transfer plus left/right lateral load transfer
+            - spring-based per-wheel compression state from MW spring data
+            - Ackermann front steering with separate inner/outer wheel angles
+            - per-wheel surface queries, allowing split-grip situations
+            - RWD/FWD/AWD axle torque distribution from MW TORQUE_SPLIT
+            - simplified LSD and center-differential torque bias using MW DIFFERENTIAL values
+            - tire forces applied at each wheel position to generate yaw moment naturally
+            - wheel-by-wheel diagnostics exposed through `MR.getDiagnostics()`
+
+            The renderer, track and collision system remain Marocto Racing's own WebGL2 implementation. This is still a planar adaptation, not the original EA rigid-body engine.
+
+            Adapted source is MPL-2.0 and available in `physics-nfsmw-experimental`.
+            Upstream reference: https://github.com/gaycoderprincess/UndercoverMWPhysics
+          files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Four-Wheel-Phase4-x64.exe
+          overwrite_files: true
