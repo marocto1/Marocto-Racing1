@@ -1,0 +1,77 @@
+name: Build MW2005 Built-in Models Phase 9
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mw2005-models-phase9-integrated-importer]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-mw2005-builtin-models-phase9:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Phase 9 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check modules
+        run: npm run check
+
+      - name: Run all regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 9 EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Builtin-Models-Phase9-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload Phase 9 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Builtin-Models-Phase9
+          path: dist/Marocto-Racing-PC-v1.4.0-MW2005-Builtin-Models-Phase9-x64.exe
+          retention-days: 30
+
+      - name: Publish Phase 9 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-builtin-models-phase9
+          target_commitish: mw2005-models-phase9-integrated-importer
+          name: Marocto Racing v1.4.0 - Built-in MW2005-inspired Cars Phase 9
+          prerelease: true
+          body: |
+            Separate experimental PC build. Stable main and previous phases remain unchanged.
+
+            Phase 9 removes manual capture/import from the normal player flow. Six detailed built-in procedural reconstructions are shipped directly inside the game:
+            - E46 GTR-inspired touring car with twin-kidney fascia, GT splitter, hood vents and race livery details
+            - R34-inspired coupe with boxy GT face, intercooler, four round tail lamps and high wing
+            - Mk4 Supra-inspired GT with projector lamps, rounded nose and tall rear wing
+            - FD RX-7-inspired lightweight coupe with low nose, pop-up lamp lids and twin round tail lamps
+            - Evo VIII-inspired sedan with rally fascia, hood vent, fog lamps and squared rear wing
+            - 911 Turbo-inspired rear-engine car with round lamps, rear light bar, side intakes and deck grille
+            - model-specific wheel/rim/brake details
+            - Phase 7 drivetrain physics and Phase 8 material/cubemap pipeline retained as optional override support
+
+            No proprietary EA model files are redistributed. The cars in this build are original procedural reconstructions created for Marocto Racing.
+          files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Builtin-Models-Phase9-x64.exe
+          overwrite_files: true
