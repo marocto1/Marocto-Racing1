@@ -22,6 +22,11 @@ test('native capture rejects invalid indices instead of corrupting a mesh',()=>{
   assert.throws(()=>parseNativeCapture(doc),/indices/);
 });
 
+test('unindexed capture must already be a complete triangle list',()=>{
+  const doc={format:MW_NATIVE_CAPTURE_FORMAT,version:1,body:[{positions:[0,0,0,1,0,0,0,1,0,2,2,2]}]};
+  assert.throws(()=>parseNativeCapture(doc),/divisible by 3/);
+});
+
 test('native capture rejects unsupported versions and axes',()=>{
   assert.throws(()=>parseNativeCapture({format:MW_NATIVE_CAPTURE_FORMAT,version:99,body:[]}),/version/);
   assert.throws(()=>parseNativeCapture({format:MW_NATIVE_CAPTURE_FORMAT,version:1,axes:{forward:'z',up:'z'},body:[{positions:[0,0,0,1,0,0,0,1,0]}]}),/axes/);
