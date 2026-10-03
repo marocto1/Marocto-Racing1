@@ -31,6 +31,8 @@ struct TextureInfo {
   uint32_t swizzle = 0;
   uint32_t endian = 0;
   bool tiled = false;
+  // Phase 8: -1 is the sampler binding itself, 0..5 are +X,-X,+Y,-Y,+Z,-Z cubemap faces.
+  int32_t cube_face = -1;
 };
 
 void SetOutputDirectory(const std::filesystem::path& directory);
@@ -48,10 +50,10 @@ void SubmitTriangleDraw(const DrawInfo& info,
                         std::span<const float> uvs,
                         std::span<const uint32_t> indices);
 
-// Phase 7: record sampler identity even when the texture is not a supported 2D export (for example a cube map).
+// Phase 7+: record sampler identity even when pixels are not exported.
 void SubmitTextureBinding(const TextureInfo& info);
 
-// Phase 6+ path: decoded base-level RGBA8 pixels. Repeated bindings are deduplicated and metadata-only entries are filled in.
+// Phase 6+ path: decoded base-level RGBA8 pixels. Phase 8 accepts six cube_face entries for cubemaps.
 void SubmitTextureRgba(const TextureInfo& info, std::span<const uint8_t> rgba);
 
 void FinishFrame(uint64_t frame);
