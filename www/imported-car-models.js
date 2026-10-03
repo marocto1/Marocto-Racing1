@@ -67,9 +67,16 @@ async function fetchText(url){const r=await fetch(new URL(url,import.meta.url));
 async function maybeText(url){try{return await fetchText(url);}catch{return null;}}
 function resolveTextures(sections,base){
   for(const s of sections){
-    s.textureURLs={};for(const [role,path] of Object.entries(s.maps||{})){if(typeof path!=='string'||!path)continue;try{s.textureURLs[role]=new URL(path,base).href;}catch{/* ignore malformed capture URL */}}
+    s.textureURLs={};
+    for(const [role,path] of Object.entries(s.maps||{})){
+      if(Array.isArray(path)&&role==='environmentCube'&&path.length===6){
+        try{s.textureURLs[role]=path.map(face=>new URL(face,base).href);}catch{/* ignore malformed cubemap URL */}
+        continue;
+      }
+      if(typeof path!=='string'||!path)continue;try{s.textureURLs[role]=new URL(path,base).href;}catch{/* ignore malformed capture URL */}
+    }
     if(s.texture&&!s.textureURLs.albedo){try{s.textureURLs.albedo=new URL(s.texture,base).href;}catch{/* ignore */}}
-    s.textureURL=s.textureURLs.albedo||null;
+    s.textureURL=typeof s.textureURLs.albedo==='string'?s.textureURLs.albedo:null;
   }
   return sections;
 }
