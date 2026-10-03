@@ -13,7 +13,8 @@
     "android:prepare": "node scripts/prepare-android.mjs",
     "pc:dev": "electron .",
     "pc:build": "electron-builder --win portable --x64 --publish never",
-    "test:desktop": "node scripts/desktop-smoke.mjs"
+    "test:desktop": "node scripts/desktop-smoke.mjs",
+    "mw:capture:convert": "node scripts/mw-capture-to-obj.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
