@@ -1,0 +1,51 @@
+name: Build NFSMW Physics Experimental Phase 2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-nfsmw-experimental:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout experimental branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check modules
+        run: npm run check
+
+      - name: Run physics tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 2 EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-NFSMW-Physics-Experimental-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+
+      - name: Publish Phase 2 release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-nfsmw-experimental
+          name: Marocto Racing v1.4.0 - NFSMW Physics Experimental Phase 2
+          prerelease: true
+          files: dist/Marocto-Racing-PC-v1.4.0-NFSMW-Physics-Experimental-x64.exe
+          overwrite_files: true

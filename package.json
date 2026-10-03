@@ -27,7 +27,7 @@
     "electron-builder": "^26.15.3"
   },
   "type": "module",
-  "description": "Marocto Racing PC: original WebGL2 two-player racing",
+  "description": "Marocto Racing PC: WebGL2 single-player racing with AI",
   "author": "Marocto",
   "main": "desktop/main.cjs",
   "build": {
@@ -40,6 +40,7 @@
     "files": [
       "desktop/**",
       "www/**",
+      "third_party/**",
       "package.json",
       "!node_modules/**/*"
     ],

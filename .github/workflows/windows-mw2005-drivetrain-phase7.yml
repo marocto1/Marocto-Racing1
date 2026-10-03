@@ -1,0 +1,82 @@
+name: Build MW2005 Drivetrain Phase 7
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [physics-nfsmw-experimental]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-mw2005-drivetrain-phase7:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Phase 7 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check all modules
+        run: npm run check
+
+      - name: Run all physics and regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 7 EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Drivetrain-Phase7-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload Phase 7 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Drivetrain-Phase7
+          path: dist/Marocto-Racing-PC-v1.4.0-MW2005-Drivetrain-Phase7-x64.exe
+          retention-days: 30
+
+      - name: Publish Phase 7 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-drivetrain-phase7
+          target_commitish: physics-nfsmw-experimental
+          name: Marocto Racing v1.4.0 - MW2005 Drivetrain Phase 7
+          prerelease: true
+          body: |
+            Separate experimental build. Stable `main` and Phases 2-6 remain unchanged.
+
+            Phase 7 builds on Phase 6 road grip and Phase 5/4 four-wheel suspension:
+            - progressive launch clutch / bite point
+            - automatic-shift torque cut and clutch recovery
+            - controlled launch wheelspin instead of immediate TCS strangling
+            - standing burnout mode with throttle + brake
+            - axle LSD coupling using MW-family differential data
+            - AWD center differential coupling
+            - RPM free-rev behaviour while clutch is open
+            - additional gear/RPM-dependent engine braking
+            - drivetrain diagnostics: clutch, launch, burnout, wheelspin and shift state
+            - regression tests for RWD/AWD differential behaviour and complete AI laps
+
+            Phase 7 remains an adaptation inside Marocto Racing's WebGL2 planar vehicle model and does not claim to execute the original EA binary.
+
+            Underlying adapted MW-family source remains MPL-2.0.
+            Upstream reference: https://github.com/gaycoderprincess/UndercoverMWPhysics
+          files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Drivetrain-Phase7-x64.exe
+          overwrite_files: true

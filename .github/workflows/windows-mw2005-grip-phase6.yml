@@ -1,0 +1,67 @@
+name: Build MW2005 Grip Phase 6
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-mw2005-grip-phase6:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout frozen Phase 6 release
+        uses: actions/checkout@v4
+        with:
+          ref: 95e5d63da535dd5a6d49fbfe6a6a1810fc40b5c0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check all modules
+        run: npm run check
+
+      - name: Run all physics and regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 6 EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Grip-Phase6-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload Phase 6 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Grip-Phase6
+          path: dist/Marocto-Racing-PC-v1.4.0-MW2005-Grip-Phase6-x64.exe
+          retention-days: 30
+
+      - name: Publish Phase 6 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-grip-phase6
+          target_commitish: 95e5d63da535dd5a6d49fbfe6a6a1810fc40b5c0
+          name: Marocto Racing v1.4.0 - MW2005 Grip & Drivetrain Phase 6
+          prerelease: true
+          body: |
+            Frozen Phase 6 build. Stable `main` and previous phases remain unchanged.
+
+            Phase 6 is the road-grip/TCS/ABS/ESC milestone before the Phase 7 drivetrain work.
+          files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Grip-Phase6-x64.exe
+          overwrite_files: true
