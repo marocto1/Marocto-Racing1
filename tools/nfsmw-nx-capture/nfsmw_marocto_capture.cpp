@@ -18,10 +18,13 @@ struct CapturedDraw {
   uint32_t vs = 0;
   int32_t ps = -1;
   uint64_t object = 0;
+  uint64_t material_key = 0;
   std::string role;
   std::string material;
   std::string tag;
   std::vector<float> positions;
+  std::vector<float> normals;
+  std::vector<float> uvs;
   std::vector<uint32_t> indices;
 };
 
@@ -79,19 +82,30 @@ void WriteNowLocked() {
   out << "{\n  \"format\":\"marocto-mw-draw-stream\",\n  \"version\":1,\n";
   out << "  \"source\":\"nfsmw-nx-x360-native-renderer\",\n";
   out << "  \"axes\":{\"forward\":\"z\",\"up\":\"y\"},\n";
-  out << "  \"metadata\":{\"phase\":\"models-phase4-nfsmw-hook\",\"frame\":"
+  out << "  \"metadata\":{\"phase\":\"models-phase5-materials\",\"frame\":"
       << g_capture_frame << ",\"draws\":" << g_draws.size() << "},\n";
   out << "  \"draws\":[\n";
   for (size_t d = 0; d < g_draws.size(); ++d) {
     const auto& draw = g_draws[d];
     if (d) out << ",\n";
+    std::ostringstream key;
+    key << std::hex << std::setfill('0') << std::setw(16) << draw.material_key;
     out << "    {\"id\":" << d << ",\"frame\":" << draw.frame
         << ",\"role\":\"" << Escape(draw.role)
         << "\",\"material\":\"" << Escape(draw.material)
+        << "\",\"materialKey\":\"0x" << key.str()
         << "\",\"tag\":\"" << Escape(draw.tag)
         << "\",\"shader\":\"vs" << draw.vs << "_ps" << draw.ps
         << "\",\"object\":" << draw.object << ",\"positions\":";
     WriteArray<float>(out, draw.positions);
+    if (!draw.normals.empty()) {
+      out << ",\"normals\":";
+      WriteArray<float>(out, draw.normals);
+    }
+    if (!draw.uvs.empty()) {
+      out << ",\"uvs\":";
+      WriteArray<float>(out, draw.uvs);
+    }
     out << ",\"indices\":";
     WriteArray<uint32_t>(out, draw.indices);
     out << '}';
@@ -137,22 +151,38 @@ bool WantsFrame(uint64_t frame) {
 void SubmitTriangleDraw(const DrawInfo& info,
                         std::span<const float> positions,
                         std::span<const uint32_t> indices) {
+  SubmitTriangleDraw(info, positions, {}, {}, indices);
+}
+
+void SubmitTriangleDraw(const DrawInfo& info,
+                        std::span<const float> positions,
+                        std::span<const float> normals,
+                        std::span<const float> uvs,
+                        std::span<const uint32_t> indices) {
   std::lock_guard lock(g_mutex);
   if (info.frame != g_capture_frame || positions.empty() || indices.empty()) return;
   if (positions.size() % 3 || indices.size() % 3) return;
   const size_t vertex_count = positions.size() / 3;
   if (!vertex_count || vertex_count > kMaxVertices || g_draws.size() >= kMaxDraws) return;
-  if (std::any_of(positions.begin(), positions.end(), [](float v) { return !std::isfinite(v); })) return;
+  if (!normals.empty() && normals.size() != vertex_count * 3) return;
+  if (!uvs.empty() && uvs.size() != vertex_count * 2) return;
+  const auto finite = [](float v) { return std::isfinite(v); };
+  if (std::any_of(positions.begin(), positions.end(), [&](float v) { return !finite(v); })) return;
+  if (std::any_of(normals.begin(), normals.end(), [&](float v) { return !finite(v); })) return;
+  if (std::any_of(uvs.begin(), uvs.end(), [&](float v) { return !finite(v); })) return;
   if (std::any_of(indices.begin(), indices.end(), [vertex_count](uint32_t i) { return i >= vertex_count; })) return;
   CapturedDraw captured;
   captured.frame = info.frame;
   captured.vs = info.vs;
   captured.ps = info.ps;
   captured.object = info.object;
+  captured.material_key = info.material_key;
   captured.role.assign(info.role.begin(), info.role.end());
   captured.material.assign(info.material.begin(), info.material.end());
   captured.tag.assign(info.tag.begin(), info.tag.end());
   captured.positions.assign(positions.begin(), positions.end());
+  captured.normals.assign(normals.begin(), normals.end());
+  captured.uvs.assign(uvs.begin(), uvs.end());
   captured.indices.assign(indices.begin(), indices.end());
   g_draws.push_back(std::move(captured));
 }
