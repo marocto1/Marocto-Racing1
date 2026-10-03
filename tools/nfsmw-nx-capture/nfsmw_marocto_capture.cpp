@@ -14,7 +14,13 @@ namespace marocto::mwcapture {
 namespace {
 
 struct CapturedDraw {
-  DrawInfo info;
+  uint64_t frame = 0;
+  uint32_t vs = 0;
+  int32_t ps = -1;
+  uint64_t object = 0;
+  std::string role;
+  std::string material;
+  std::string tag;
   std::vector<float> positions;
   std::vector<uint32_t> indices;
 };
@@ -79,12 +85,12 @@ void WriteNowLocked() {
   for (size_t d = 0; d < g_draws.size(); ++d) {
     const auto& draw = g_draws[d];
     if (d) out << ",\n";
-    out << "    {\"id\":" << d << ",\"frame\":" << draw.info.frame
-        << ",\"role\":\"" << Escape(draw.info.role)
-        << "\",\"material\":\"" << Escape(draw.info.material)
-        << "\",\"tag\":\"" << Escape(draw.info.tag)
-        << "\",\"shader\":\"vs" << draw.info.vs << "_ps" << draw.info.ps
-        << "\",\"object\":" << draw.info.object << ",\"positions\":";
+    out << "    {\"id\":" << d << ",\"frame\":" << draw.frame
+        << ",\"role\":\"" << Escape(draw.role)
+        << "\",\"material\":\"" << Escape(draw.material)
+        << "\",\"tag\":\"" << Escape(draw.tag)
+        << "\",\"shader\":\"vs" << draw.vs << "_ps" << draw.ps
+        << "\",\"object\":" << draw.object << ",\"positions\":";
     WriteArray<float>(out, draw.positions);
     out << ",\"indices\":";
     WriteArray<uint32_t>(out, draw.indices);
@@ -139,7 +145,13 @@ void SubmitTriangleDraw(const DrawInfo& info,
   if (std::any_of(positions.begin(), positions.end(), [](float v) { return !std::isfinite(v); })) return;
   if (std::any_of(indices.begin(), indices.end(), [vertex_count](uint32_t i) { return i >= vertex_count; })) return;
   CapturedDraw captured;
-  captured.info = info;
+  captured.frame = info.frame;
+  captured.vs = info.vs;
+  captured.ps = info.ps;
+  captured.object = info.object;
+  captured.role.assign(info.role.begin(), info.role.end());
+  captured.material.assign(info.material.begin(), info.material.end());
+  captured.tag.assign(info.tag.begin(), info.tag.end());
   captured.positions.assign(positions.begin(), positions.end());
   captured.indices.assign(indices.begin(), indices.end());
   g_draws.push_back(std::move(captured));
