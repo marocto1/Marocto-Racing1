@@ -42,7 +42,7 @@ std::vector<CapturedDraw> g_draws;
 std::vector<CapturedTexture> g_textures;
 constexpr size_t kMaxDraws = 10000;
 constexpr size_t kMaxVertices = 2'000'000;
-constexpr size_t kMaxTextures = 512;
+constexpr size_t kMaxTextures = 768;
 constexpr uint64_t kMaxTextureBytes = UINT64_C(256) << 20;
 
 std::string Escape(std::string_view value) {
@@ -90,6 +90,30 @@ uint64_t TextureBytesLocked() {
   return total;
 }
 
+bool SameTextureBinding(const TextureInfo& a, const TextureInfo& b) {
+  return a.material_key == b.material_key && a.sampler == b.sampler &&
+         a.sampler_type == b.sampler_type && a.address == b.address &&
+         a.format == b.format && a.width == b.width && a.height == b.height &&
+         a.swizzle == b.swizzle && a.endian == b.endian && a.tiled == b.tiled;
+}
+
+CapturedTexture* FindTextureLocked(const TextureInfo& info) {
+  for (auto& texture : g_textures) if (SameTextureBinding(texture.info, info)) return &texture;
+  return nullptr;
+}
+
+CapturedTexture* AddTextureLocked(const TextureInfo& info) {
+  if (g_textures.size() >= kMaxTextures) return nullptr;
+  CapturedTexture captured;
+  captured.info = info;
+  std::ostringstream id;
+  id << "mwtex_" << Hex64(info.material_key) << "_s" << info.sampler << "_a" << std::hex
+     << std::setfill('0') << std::setw(8) << info.address;
+  captured.id = id.str();
+  g_textures.push_back(std::move(captured));
+  return &g_textures.back();
+}
+
 void WriteNowLocked() {
   if (g_output.empty() || g_draws.empty()) return;
   std::error_code ec;
@@ -99,6 +123,7 @@ void WriteNowLocked() {
   if (ec) return;
 
   for (const auto& texture : g_textures) {
+    if (texture.rgba.empty()) continue;
     const auto file = texture_dir / (texture.id + ".rgba");
     std::ofstream pixels(file, std::ios::binary | std::ios::trunc);
     if (!pixels) continue;
@@ -113,18 +138,22 @@ void WriteNowLocked() {
   out << "{\n  \"format\":\"marocto-mw-draw-stream\",\n  \"version\":1,\n";
   out << "  \"source\":\"nfsmw-nx-x360-native-renderer\",\n";
   out << "  \"axes\":{\"forward\":\"z\",\"up\":\"y\"},\n";
-  out << "  \"metadata\":{\"phase\":\"models-phase6-textures\",\"frame\":"
-      << g_capture_frame << ",\"draws\":" << g_draws.size() << ",\"textures\":" << g_textures.size() << "},\n";
+  out << "  \"metadata\":{\"phase\":\"models-phase7-full-materials\",\"frame\":"
+      << g_capture_frame << ",\"draws\":" << g_draws.size() << ",\"samplerBindings\":" << g_textures.size()
+      << ",\"pixelTextures\":" << std::count_if(g_textures.begin(), g_textures.end(), [](const auto& t) { return !t.rgba.empty(); }) << "},\n";
   out << "  \"textures\":[";
   for (size_t i = 0; i < g_textures.size(); ++i) {
     const auto& t = g_textures[i];
     if (i) out << ',';
     out << "\n    {\"id\":\"" << Escape(t.id) << "\",\"materialKey\":\"0x" << Hex64(t.info.material_key)
-        << "\",\"sampler\":" << t.info.sampler << ",\"address\":" << t.info.address
+        << "\",\"sampler\":" << t.info.sampler << ",\"samplerType\":" << t.info.sampler_type
+        << ",\"samplerName\":\"" << Escape(t.info.sampler_name) << "\",\"address\":" << t.info.address
         << ",\"format\":" << t.info.format << ",\"width\":" << t.info.width
         << ",\"height\":" << t.info.height << ",\"swizzle\":" << t.info.swizzle
         << ",\"endian\":" << t.info.endian << ",\"tiled\":" << (t.info.tiled ? "true" : "false")
-        << ",\"dataFile\":\"textures/" << Escape(t.id) << ".rgba\"}";
+        << ",\"hasPixels\":" << (!t.rgba.empty() ? "true" : "false");
+    if (!t.rgba.empty()) out << ",\"dataFile\":\"textures/" << Escape(t.id) << ".rgba\"";
+    out << '}';
   }
   if (!g_textures.empty()) out << '\n';
   out << "  ],\n  \"draws\":[\n";
@@ -230,26 +259,27 @@ void SubmitTriangleDraw(const DrawInfo& info,
   g_draws.push_back(std::move(captured));
 }
 
+void SubmitTextureBinding(const TextureInfo& info) {
+  std::lock_guard lock(g_mutex);
+  if (g_capture_frame == UINT64_MAX || !info.width || !info.height || info.width > 8192 || info.height > 8192) return;
+  if (CapturedTexture* existing = FindTextureLocked(info)) {
+    if (existing->info.sampler_name.empty() && !info.sampler_name.empty()) existing->info.sampler_name = info.sampler_name;
+    return;
+  }
+  AddTextureLocked(info);
+}
+
 void SubmitTextureRgba(const TextureInfo& info, std::span<const uint8_t> rgba) {
   std::lock_guard lock(g_mutex);
   if (g_capture_frame == UINT64_MAX || !info.width || !info.height || info.width > 8192 || info.height > 8192) return;
   const uint64_t expected = uint64_t(info.width) * info.height * 4;
-  if (expected != rgba.size() || expected > (UINT64_C(128) << 20) || g_textures.size() >= kMaxTextures) return;
-  for (const auto& existing : g_textures) {
-    const auto& e = existing.info;
-    if (e.material_key == info.material_key && e.sampler == info.sampler && e.address == info.address &&
-        e.format == info.format && e.width == info.width && e.height == info.height &&
-        e.swizzle == info.swizzle && e.endian == info.endian && e.tiled == info.tiled) return;
-  }
+  if (expected != rgba.size() || expected > (UINT64_C(128) << 20)) return;
+  CapturedTexture* captured = FindTextureLocked(info);
+  if (!captured) captured = AddTextureLocked(info);
+  if (!captured || !captured->rgba.empty()) return;
   if (TextureBytesLocked() + expected > kMaxTextureBytes) return;
-  CapturedTexture captured;
-  captured.info = info;
-  std::ostringstream id;
-  id << "mwtex_" << Hex64(info.material_key) << "_s" << info.sampler << "_a" << std::hex
-     << std::setfill('0') << std::setw(8) << info.address;
-  captured.id = id.str();
-  captured.rgba.assign(rgba.begin(), rgba.end());
-  g_textures.push_back(std::move(captured));
+  if (captured->info.sampler_name.empty() && !info.sampler_name.empty()) captured->info.sampler_name = info.sampler_name;
+  captured->rgba.assign(rgba.begin(), rgba.end());
 }
 
 void FinishFrame(uint64_t frame) {
