@@ -36,25 +36,37 @@ int main(int argc, char** argv) {
   info.tag = "selftest";
   marocto::mwcapture::SubmitTriangleDraw(info, positions, normals, uvs, indices);
 
+  marocto::mwcapture::TextureInfo diffuse;
+  diffuse.material_key = info.material_key;
+  diffuse.sampler = 0;
+  diffuse.sampler_type = 12;
+  diffuse.sampler_name = "DIFFUSEMAP_SAMPLER";
+  diffuse.address = 0x00123000;
+  diffuse.format = 6;
+  diffuse.width = 2;
+  diffuse.height = 2;
+  diffuse.swizzle = 0x688;
+  diffuse.endian = 0;
+  diffuse.tiled = false;
+  marocto::mwcapture::SubmitTextureBinding(diffuse);
   const std::vector<uint8_t> rgba = {
       255,0,0,255, 0,255,0,255,
       0,0,255,255, 255,255,255,255,
   };
-  marocto::mwcapture::TextureInfo texture;
-  texture.material_key = info.material_key;
-  texture.sampler = 0;
-  texture.address = 0x00123000;
-  texture.format = 6;
-  texture.width = 2;
-  texture.height = 2;
-  texture.swizzle = 0x688;
-  texture.endian = 0;
-  texture.tiled = false;
-  marocto::mwcapture::SubmitTextureRgba(texture, rgba);
+  marocto::mwcapture::SubmitTextureRgba(diffuse, rgba);
+
+  marocto::mwcapture::TextureInfo environment = diffuse;
+  environment.sampler = 3;
+  environment.sampler_type = 14;
+  environment.sampler_name = "ENVMAP_CUBE_SAMPLER";
+  environment.address = 0x00500000;
+  environment.width = 64;
+  environment.height = 64;
+  marocto::mwcapture::SubmitTextureBinding(environment);
 
   marocto::mwcapture::FinishFrame(43);
   const auto raw = out / "marocto_capture" / "raw-draws.json";
-  if (!std::filesystem::exists(raw) || std::filesystem::file_size(raw) < 250) {
+  if (!std::filesystem::exists(raw) || std::filesystem::file_size(raw) < 350) {
     std::cerr << "raw-draws.json was not written\n";
     return 3;
   }
