@@ -3,7 +3,7 @@ name: Build Windows PC
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, mw2005-models-phase5-materials]
   pull_request:
     branches: [main]
 
@@ -30,7 +30,36 @@ jobs:
       - name: Check all web and desktop modules
         run: npm run check
 
-      - name: Run v1.4 physics regression tests
+      - name: Check Phase 5 capture tools
+        if: github.ref == 'refs/heads/mw2005-models-phase5-materials'
+        run: |
+          node --check scripts/mw-draw-capture-lib.mjs
+          node --check scripts/mw-draw-capture-build.mjs
+
+      - name: Exercise Phase 5 PowerShell patch installer
+        if: github.ref == 'refs/heads/mw2005-models-phase5-materials'
+        shell: pwsh
+        run: |
+          $mock = Join-Path $env:RUNNER_TEMP "nfsmw-nx-mock"
+          New-Item -ItemType Directory -Force (Join-Path $mock "app/src") | Out-Null
+          @'
+          set(NFSMW_SOURCES
+              src/nfsmw_nativo_dibujos.cpp
+          )
+          '@ | Set-Content (Join-Path $mock "app/CMakeLists.txt") -Encoding UTF8
+          @'
+          #include "nfsmw_nativo_dibujos.h"
+          void FakeDraw() {
+              // Diagnostic: one line per combination of VS, PS and render target (at most 32).
+          }
+          '@ | Set-Content (Join-Path $mock "app/src/nfsmw_nativo_dibujos.cpp") -Encoding UTF8
+          & ./tools/nfsmw-nx-capture/apply_to_nfsmw_nx.ps1 -NfsmwNxRoot $mock
+          $draws = Get-Content (Join-Path $mock "app/src/nfsmw_nativo_dibujos.cpp") -Raw
+          if ($draws -notmatch 'MAROCTO_MW_CAPTURE_PHASE5') { throw "Phase 5 capture block was not inserted" }
+          if ($draws -notmatch 'a.ubicacion == 4') { throw "TEXCOORD0 capture was not inserted" }
+          if ($draws -notmatch 'material_key') { throw "Material key capture was not inserted" }
+
+      - name: Run v1.4 physics and models regression tests
         run: npm test
 
       - name: Build Windows portable EXE
@@ -43,12 +72,63 @@ jobs:
           if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
           Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB"
 
+      - name: Prepare Phase 5 release assets
+        if: github.ref == 'refs/heads/mw2005-models-phase5-materials'
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase5-x64.exe"
+          Copy-Item $source $target -Force
+          $kit = "dist/MW2005-Capture-Kit-Phase5"
+          New-Item -ItemType Directory -Force $kit | Out-Null
+          Copy-Item "tools/nfsmw-nx-capture/*" $kit -Recurse -Force
+          Copy-Item "scripts/mw-draw-capture-lib.mjs" $kit -Force
+          Copy-Item "scripts/mw-draw-capture-build.mjs" $kit -Force
+          Copy-Item "scripts/mw-capture-to-obj.mjs" $kit -Force
+          Compress-Archive -Path "$kit/*" -DestinationPath "dist/Marocto-Racing-MW2005-Capture-Kit-Phase5.zip" -Force
+          $exe = Get-Item $target
+          $zip = Get-Item "dist/Marocto-Racing-MW2005-Capture-Kit-Phase5.zip"
+          if ($exe.Length -lt 50000000) { throw "Phase 5 EXE is unexpectedly small" }
+          if ($zip.Length -lt 5000) { throw "Phase 5 capture kit ZIP is unexpectedly small" }
+          Write-Host "Phase5 EXE SHA256 $((Get-FileHash $target -Algorithm SHA256).Hash.ToLower())"
+          Write-Host "Phase5 KIT SHA256 $((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower())"
+
       - name: Upload Windows EXE artifact
+        if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: Marocto-Racing-PC-v1.4.0
           path: dist/Marocto-Racing-PC-1.4.0-x64.exe
           retention-days: 30
+
+      - name: Upload Phase 5 artifacts
+        if: github.ref == 'refs/heads/mw2005-models-phase5-materials'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Models-Phase5
+          path: |
+            dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase5-x64.exe
+            dist/Marocto-Racing-MW2005-Capture-Kit-Phase5.zip
+          retention-days: 30
+
+      - name: Publish Phase 5 prerelease
+        if: github.ref == 'refs/heads/mw2005-models-phase5-materials'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-models-phase5
+          target_commitish: mw2005-models-phase5-materials
+          name: Marocto Racing v1.4.0 - MW2005 UV Materials Phase 5
+          prerelease: true
+          body: |
+            Separate experimental PC build. Stable main, physics releases and Models Phases 1-4 remain unchanged.
+
+            Models Phase 5 adds native normals/TEXCOORD0 UV capture, sampler-state material identity,
+            deterministic material fallback colors, automatic car/body/wheel isolation and manual object/shader fallback filtering.
+            No proprietary EA assets or texture pixels are included.
+          files: |
+            dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase5-x64.exe
+            dist/Marocto-Racing-MW2005-Capture-Kit-Phase5.zip
+          overwrite_files: true
 
       - name: Publish stable PC Latest release
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
