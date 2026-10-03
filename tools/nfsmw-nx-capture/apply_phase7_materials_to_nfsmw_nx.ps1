@@ -58,10 +58,7 @@ $old='              if (!rgba8 && !dxt1 && !dxt3 && !dxt5) continue;'
 $new='              const bool marocto_exportable_2d = s.tipo >= 10 && s.tipo <= 12 && (rgba8 || dxt1 || dxt3 || dxt5);'
 if (-not $text.Contains($old)) { throw 'Phase 6 texture format anchor not found.' }
 $text=$text.Replace($old,$new)
-$old='              if (!address) continue;`r`n              const auto order=static_cast<xenos::Endian>(endian);'
-if (-not $text.Contains($old)) {
-  $old="              if (!address) continue;`n              const auto order=static_cast<xenos::Endian>(endian);"
-}
+$old='              if (!address) continue;'
 if (-not $text.Contains($old)) { throw 'Phase 6 texture address anchor not found.' }
 $new=@'
               if (!address) continue;
@@ -70,7 +67,6 @@ $new=@'
               ti.address=address;ti.format=format;ti.width=width;ti.height=height;ti.swizzle=swizzle;ti.endian=endian;ti.tiled=tiled;
               marocto::mwcapture::SubmitTextureBinding(ti);
               if (!marocto_exportable_2d) continue;
-              const auto order=static_cast<xenos::Endian>(endian);
 '@
 $text=$text.Replace($old,$new.TrimEnd())
 $old='              if(texture_ok){marocto::mwcapture::TextureInfo ti;ti.material_key=material_key;ti.sampler=s.registro;ti.address=address;ti.format=format;ti.width=width;ti.height=height;ti.swizzle=swizzle;ti.endian=endian;ti.tiled=tiled;marocto::mwcapture::SubmitTextureRgba(ti,pixels);}'
