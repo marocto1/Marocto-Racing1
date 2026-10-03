@@ -47,13 +47,13 @@ export function inferMaterialSurface(textures=[],meshRole='body'){
 export function materialParameters(surface,textures=[]){
   const roles=new Set(textures.map(t=>t.role||classifySamplerRole(t))),hasEnv=roles.has('environment'),hasNormal=roles.has('normal'),hasEmissive=roles.has('emissive');
   const presets={
-    paint:{roughness:.34,reflectivity:hasEnv?.46:.30,opacity:1,emissive:0,normalStrength:hasNormal?.72:0,detailStrength:.28},
+    paint:{roughness:.34,reflectivity:hasEnv ? .46 : .30,opacity:1,emissive:0,normalStrength:hasNormal ? .72 : 0,detailStrength:.28},
     glass:{roughness:.10,reflectivity:.68,opacity:.38,emissive:0,normalStrength:0,detailStrength:.08},
-    light:{roughness:.18,reflectivity:.34,opacity:1,emissive:hasEmissive?1.6:.75,normalStrength:hasNormal?.35:0,detailStrength:.18},
-    rubber:{roughness:.92,reflectivity:.035,opacity:1,emissive:0,normalStrength:hasNormal?.75:.18,detailStrength:.18},
-    metal:{roughness:.24,reflectivity:.72,opacity:1,emissive:0,normalStrength:hasNormal?.5:0,detailStrength:.16},
-    wheel:{roughness:.48,reflectivity:.34,opacity:1,emissive:0,normalStrength:hasNormal?.45:.12,detailStrength:.14},
-    detail:{roughness:.55,reflectivity:.14,opacity:1,emissive:hasEmissive?.6:0,normalStrength:hasNormal?.45:0,detailStrength:.38}
+    light:{roughness:.18,reflectivity:.34,opacity:1,emissive:hasEmissive ? 1.6 : .75,normalStrength:hasNormal ? .35 : 0,detailStrength:.18},
+    rubber:{roughness:.92,reflectivity:.035,opacity:1,emissive:0,normalStrength:hasNormal ? .75 : .18,detailStrength:.18},
+    metal:{roughness:.24,reflectivity:.72,opacity:1,emissive:0,normalStrength:hasNormal ? .5 : 0,detailStrength:.16},
+    wheel:{roughness:.48,reflectivity:.34,opacity:1,emissive:0,normalStrength:hasNormal ? .45 : .12,detailStrength:.14},
+    detail:{roughness:.55,reflectivity:.14,opacity:1,emissive:hasEmissive ? .6 : 0,normalStrength:hasNormal ? .45 : 0,detailStrength:.38}
   };
   const p={...(presets[surface]||presets.detail)};
   const albedo=textures.find(t=>(t.role||classifySamplerRole(t))==='albedo');
