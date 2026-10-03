@@ -1,5 +1,5 @@
 // Existing native WebGL2 renderer, extended with colored procedural meshes,
-// reusable matrices, fog, frustum-distance chunks and independent chase cameras.
+// imported textured meshes, reusable matrices, fog and chase cameras.
 export function identity(m){m.fill(0);m[0]=m[5]=m[10]=m[15]=1;return m;}
 export function multiply(out,a,b){for(let c=0;c<4;c++)for(let r=0;r<4;r++)out[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];return out;}
 export function modelMatrix(m,x,y,z,yaw=0,roll=0,pitch=0){
@@ -43,10 +43,17 @@ uniform mat4 mvp;uniform mat4 model;out vec3 N;out vec3 C;out vec3 W;
 void main(){gl_Position=mvp*vec4(p,1.);N=mat3(model)*n;C=color;W=(model*vec4(p,1.)).xyz;}`,`#version 300 es
 precision mediump float;in vec3 N;in vec3 C;in vec3 W;uniform vec3 eye;out vec4 o;
 void main(){float l=.42+.58*max(dot(normalize(N),normalize(vec3(-.35,.8,.25))),0.);vec3 col=C*l;float fog=smoothstep(110.,370.,distance(W,eye));o=vec4(mix(col,vec3(.52,.66,.76),fog),1.);}`);
+    this.texProg=this.program(`#version 300 es
+layout(location=0) in vec3 p;layout(location=1) in vec3 n;layout(location=2) in vec2 uv;
+uniform mat4 mvp;uniform mat4 model;out vec3 N;out vec2 UV;out vec3 W;
+void main(){gl_Position=mvp*vec4(p,1.);N=mat3(model)*n;UV=uv;W=(model*vec4(p,1.)).xyz;}`,`#version 300 es
+precision mediump float;in vec3 N;in vec2 UV;in vec3 W;uniform vec3 eye;uniform vec3 baseColor;uniform sampler2D albedo;uniform float useTexture;out vec4 o;
+void main(){float l=.42+.58*max(dot(normalize(N),normalize(vec3(-.35,.8,.25))),0.);vec4 tex=texture(albedo,UV);vec3 src=mix(baseColor,tex.rgb,clamp(useTexture,0.,1.));float alpha=mix(1.,tex.a,clamp(useTexture,0.,1.));float fog=smoothstep(110.,370.,distance(W,eye));o=vec4(mix(src*l,vec3(.52,.66,.76),fog),alpha);}`);
     this.u={mvp:g.getUniformLocation(this.prog,'mvp'),model:g.getUniformLocation(this.prog,'model'),eye:g.getUniformLocation(this.prog,'eye')};
-    this.model=new Float32Array(16);this.mvp=new Float32Array(16);this.unit=identity(new Float32Array(16));
-    this.quality=1;this.frameEMA=16;this.qualityTimer=0;this.drawCalls=0;this.triangles=0;
-    g.enable(g.DEPTH_TEST); // Thin glass/arches and road strips are intentionally double-sided.
+    this.tu={mvp:g.getUniformLocation(this.texProg,'mvp'),model:g.getUniformLocation(this.texProg,'model'),eye:g.getUniformLocation(this.texProg,'eye'),baseColor:g.getUniformLocation(this.texProg,'baseColor'),albedo:g.getUniformLocation(this.texProg,'albedo'),useTexture:g.getUniformLocation(this.texProg,'useTexture')};
+    this.model=new Float32Array(16);this.mvp=new Float32Array(16);this.unit=identity(new Float32Array(16));this.textureCache=new Map();
+    this.quality=1;this.frameEMA=16;this.qualityTimer=0;this.drawCalls=0;this.triangles=0;this.eyeX=0;this.eyeZ=0;
+    g.enable(g.DEPTH_TEST);
   }
   shader(type,source){const g=this.gl,s=g.createShader(type);g.shaderSource(s,source);g.compileShader(s);if(!g.getShaderParameter(s,g.COMPILE_STATUS))throw Error(g.getShaderInfoLog(s));return s;}
   program(v,f){const g=this.gl,p=g.createProgram(),vs=this.shader(g.VERTEX_SHADER,v),fs=this.shader(g.FRAGMENT_SHADER,f);g.attachShader(p,vs);g.attachShader(p,fs);g.linkProgram(p);if(!g.getProgramParameter(p,g.LINK_STATUS))throw Error(g.getProgramInfoLog(p));g.deleteShader(vs);g.deleteShader(fs);return p;}
@@ -54,11 +61,24 @@ void main(){float l=.42+.58*max(dot(normalize(N),normalize(vec3(-.35,.8,.25))),0
     const g=this.gl,vao=g.createVertexArray();g.bindVertexArray(vao);
     const arrays=[geometry.positions,geometry.normals,geometry.colors];
     for(let i=0;i<3;i++){const b=g.createBuffer();g.bindBuffer(g.ARRAY_BUFFER,b);g.bufferData(g.ARRAY_BUFFER,new Float32Array(arrays[i]),g.STATIC_DRAW);g.enableVertexAttribArray(i);g.vertexAttribPointer(i,3,g.FLOAT,false,0,0);}
-    return {vao,count:geometry.vertexCount};
+    return {vao,count:geometry.vertexCount,type:'color'};
   }
+  importedMesh(section){
+    const g=this.gl,vao=g.createVertexArray();g.bindVertexArray(vao);
+    const attrs=[[section.positions,3],[section.normals,3],[section.uvs,2]];
+    for(let i=0;i<3;i++){const b=g.createBuffer();g.bindBuffer(g.ARRAY_BUFFER,b);g.bufferData(g.ARRAY_BUFFER,new Float32Array(attrs[i][0]),g.STATIC_DRAW);g.enableVertexAttribArray(i);g.vertexAttribPointer(i,attrs[i][1],g.FLOAT,false,0,0);}
+    return {vao,count:section.positions.length/3,type:'textured',color:section.color||[.72,.74,.78],texture:null,textureURL:section.textureURL||null};
+  }
+  async texture(url){
+    if(!url)return null;if(this.textureCache.has(url))return this.textureCache.get(url);
+    const promise=(async()=>{const r=await fetch(url);if(!r.ok)throw Error(`Texture ${r.status}: ${url}`);const image=await createImageBitmap(await r.blob()),g=this.gl,t=g.createTexture();g.bindTexture(g.TEXTURE_2D,t);g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL,false);g.texImage2D(g.TEXTURE_2D,0,g.RGBA,g.RGBA,g.UNSIGNED_BYTE,image);g.generateMipmap(g.TEXTURE_2D);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MIN_FILTER,g.LINEAR_MIPMAP_LINEAR);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MAG_FILTER,g.LINEAR);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_S,g.REPEAT);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_T,g.REPEAT);image.close?.();return t;})().catch(error=>{console.warn(error);return null;});
+    this.textureCache.set(url,promise);return promise;
+  }
+  async prepareImportedMesh(section){const mesh=this.importedMesh(section);if(mesh.textureURL)mesh.texture=await this.texture(mesh.textureURL);return mesh;}
   resize(){const d=Math.min(window.devicePixelRatio||1,1.5)*this.quality;const w=Math.max(1,Math.round(this.c.clientWidth*d)),h=Math.max(2,Math.round(this.c.clientHeight*d));if(this.c.width!==w||this.c.height!==h){this.c.width=w;this.c.height=h;}}
   adapt(frameMs,dt){this.frameEMA+=(Math.min(frameMs,100)-this.frameEMA)*.025;this.qualityTimer+=dt;if(this.qualityTimer<3)return;this.qualityTimer=0;if(this.frameEMA>24)this.quality=Math.max(.55,this.quality-.1);else if(this.frameEMA<17.5)this.quality=Math.min(1,this.quality+.05);}
-  clear(preview=false){const g=this.gl;this.resize();g.disable(g.SCISSOR_TEST);if(preview)g.clearColor(.12,.18,.25,1);else g.clearColor(.52,.66,.76,1);g.clear(g.COLOR_BUFFER_BIT|g.DEPTH_BUFFER_BIT);g.useProgram(this.prog);this.drawCalls=0;this.triangles=0;}
-  viewport(x,y,w,h,ex,ez){const g=this.gl;g.viewport(x,y,w,h);g.scissor(x,y,w,h);g.enable(g.SCISSOR_TEST);g.uniform3f(this.u.eye,ex,4.5,ez);}
-  draw(mesh,vp,model=this.unit){const g=this.gl;multiply(this.mvp,vp,model);g.uniformMatrix4fv(this.u.mvp,false,this.mvp);g.uniformMatrix4fv(this.u.model,false,model);g.bindVertexArray(mesh.vao);g.drawArrays(g.TRIANGLES,0,mesh.count);this.drawCalls++;this.triangles+=mesh.count/3;}
+  clear(preview=false){const g=this.gl;this.resize();g.disable(g.SCISSOR_TEST);if(preview)g.clearColor(.12,.18,.25,1);else g.clearColor(.52,.66,.76,1);g.clear(g.COLOR_BUFFER_BIT|g.DEPTH_BUFFER_BIT);this.drawCalls=0;this.triangles=0;}
+  viewport(x,y,w,h,ex,ez){const g=this.gl;this.eyeX=ex;this.eyeZ=ez;g.viewport(x,y,w,h);g.scissor(x,y,w,h);g.enable(g.SCISSOR_TEST);}
+  draw(mesh,vp,model=this.unit){const g=this.gl;g.useProgram(this.prog);multiply(this.mvp,vp,model);g.uniformMatrix4fv(this.u.mvp,false,this.mvp);g.uniformMatrix4fv(this.u.model,false,model);g.uniform3f(this.u.eye,this.eyeX,4.5,this.eyeZ);g.bindVertexArray(mesh.vao);g.drawArrays(g.TRIANGLES,0,mesh.count);this.drawCalls++;this.triangles+=mesh.count/3;}
+  drawImported(mesh,vp,model=this.unit){const g=this.gl;g.useProgram(this.texProg);multiply(this.mvp,vp,model);g.uniformMatrix4fv(this.tu.mvp,false,this.mvp);g.uniformMatrix4fv(this.tu.model,false,model);g.uniform3f(this.tu.eye,this.eyeX,4.5,this.eyeZ);g.uniform3fv(this.tu.baseColor,mesh.color);g.activeTexture(g.TEXTURE0);g.bindTexture(g.TEXTURE_2D,mesh.texture);g.uniform1i(this.tu.albedo,0);g.uniform1f(this.tu.useTexture,mesh.texture?1:0);g.bindVertexArray(mesh.vao);g.drawArrays(g.TRIANGLES,0,mesh.count);this.drawCalls++;this.triangles+=mesh.count/3;}
 }
