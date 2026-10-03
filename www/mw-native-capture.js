@@ -12,10 +12,17 @@ function finiteArray(value,name,multiple){
 }
 function optionalArray(value,name,multiple){if(value==null)return null;return finiteArray(value,name,multiple);}
 function color(value){if(!Array.isArray(value)||value.length<3)return DEFAULT_COLOR.slice();return value.slice(0,3).map(Number).map(v=>clamp(Number.isFinite(v)?v:1,0,1));}
-function stringMap(value){const out={};if(!value||typeof value!=='object')return out;for(const [k,v] of Object.entries(value))if(typeof v==='string'&&v)out[k]=v;return out;}
+function materialMaps(value){
+  const out={};if(!value||typeof value!=='object')return out;
+  for(const [k,v] of Object.entries(value)){
+    if(typeof v==='string'&&v)out[k]=v;
+    else if(k==='environmentCube'&&Array.isArray(v)&&v.length===6&&v.every(x=>typeof x==='string'&&x))out[k]=v.slice();
+  }
+  return out;
+}
 function params(value){const out={...DEFAULT_PARAMS};if(!value||typeof value!=='object')return out;for(const k of Object.keys(out)){const v=Number(value[k]);if(Number.isFinite(v))out[k]=v;}out.roughness=clamp(out.roughness,0,1);out.reflectivity=clamp(out.reflectivity,0,1);out.opacity=clamp(out.opacity,0,1);out.emissive=Math.max(0,out.emissive);out.normalStrength=clamp(out.normalStrength,0,2);out.detailStrength=clamp(out.detailStrength,0,2);return out;}
 function normalizeMaterialTable(doc){
-  const map=new Map();for(const raw of Array.isArray(doc.materials)?doc.materials:[]){if(!raw||typeof raw.id!=='string'||!raw.id)continue;const maps=stringMap(raw.maps),legacy=typeof raw.texture==='string'?raw.texture:null;if(legacy&&!maps.albedo)maps.albedo=legacy;map.set(raw.id,{color:color(raw.color||raw.kd),texture:legacy||maps.albedo||null,maps,surface:typeof raw.surface==='string'?raw.surface:'detail',params:params(raw.params),samplers:Array.isArray(raw.samplers)?raw.samplers:[]});}return map;
+  const map=new Map();for(const raw of Array.isArray(doc.materials)?doc.materials:[]){if(!raw||typeof raw.id!=='string'||!raw.id)continue;const maps=materialMaps(raw.maps),legacy=typeof raw.texture==='string'?raw.texture:null;if(legacy&&!maps.albedo)maps.albedo=legacy;map.set(raw.id,{color:color(raw.color||raw.kd),texture:legacy||maps.albedo||null,maps,surface:typeof raw.surface==='string'?raw.surface:'detail',params:params(raw.params),samplers:Array.isArray(raw.samplers)?raw.samplers:[]});}return map;
 }
 function faceNormal(a,b,c){const ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2],vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const l=Math.hypot(nx,ny,nz)||1;return [nx/l,ny/l,nz/l];}
 function read3(a,i){return [a[i*3],a[i*3+1],a[i*3+2]];}
