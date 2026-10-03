@@ -82,7 +82,7 @@ async function loadOBJCar(spec,entry){
 
 export async function loadImportedCar(spec,entry){
   if(!entry)return null;
-  const native=await loadNativeCapture(spec,entry);if(native)return native;
+  try{const native=await loadNativeCapture(spec,entry);if(native)return native;}catch(error){console.warn('Native capture invalid, trying OBJ fallback',entry.id,error);}
   return loadOBJCar(spec,entry);
 }
 
