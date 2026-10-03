@@ -67,6 +67,16 @@ $block = @'
           };
           const auto decode = [&](const AtributoVertices* a, uint32_t want, std::vector<float>& out) -> bool {
             if (!a) return false;
+            uint32_t available = 0;
+            switch (a->formato) {
+              case VK_FORMAT_R32G32_SFLOAT: case VK_FORMAT_R16G16_SFLOAT:
+              case VK_FORMAT_R16G16_SNORM: case VK_FORMAT_R16G16_UNORM: available = 2; break;
+              case VK_FORMAT_R32G32B32_SFLOAT: available = 3; break;
+              case VK_FORMAT_R32G32B32A32_SFLOAT: case VK_FORMAT_R16G16B16A16_SFLOAT:
+              case VK_FORMAT_R16G16B16A16_SNORM: case VK_FORMAT_R16G16B16A16_UNORM: available = 4; break;
+              default: return false;
+            }
+            if (want > available) return false;
             const Origen& o = origenes[a->enlace];
             const uint32_t stride = entrada->enlaces[a->enlace].zancada;
             out.clear(); out.reserve(size_t(vertices) * want);
@@ -143,7 +153,7 @@ $block = @'
             // Stable material identity from shaders plus every pixel-sampler fetch constant. We do not copy
             // proprietary texture pixels here; this key preserves material boundaries for the later texture stage.
             uint64_t material_key = UINT64_C(1469598103934665603);
-            const auto mix = [&](uint32_t value) mutable { material_key ^= value; material_key *= UINT64_C(1099511628211); };
+            auto mix = [&](uint32_t value) { material_key ^= value; material_key *= UINT64_C(1099511628211); };
             mix(p.vs->numero); mix(ps ? ps->numero : UINT32_MAX);
             if (ps) for (const SamplerShader& s : ps->samplers) {
               if (s.registro >= 16) continue;
