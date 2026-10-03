@@ -1,0 +1,161 @@
+name: Build MW2005 Models Phase 6
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mw2005-models-phase6-textures]
+
+permissions:
+  contents: write
+
+jobs:
+  texture-capture-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Phase 6 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compile C++23 capture bridge
+        run: |
+          g++ -std=c++23 -Wall -Wextra -Werror -pedantic \
+            tools/nfsmw-nx-capture/nfsmw_marocto_capture.cpp \
+            tools/nfsmw-nx-capture/selftest.cpp \
+            -o /tmp/marocto-mw-capture-selftest
+
+      - name: Generate Phase 6 draw and texture stream
+        run: |
+          mkdir -p /tmp/marocto-phase6
+          /tmp/marocto-mw-capture-selftest /tmp/marocto-phase6
+          test -s /tmp/marocto-phase6/marocto_capture/raw-draws.json
+          test -s /tmp/marocto-phase6/marocto_capture/textures/mwtex_123456789abcdef0_s0_a00123000.rgba
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('/tmp/marocto-phase6/marocto_capture/raw-draws.json'));const d=r.draws[0],t=r.textures[0];if(!d.uvs||d.uvs.length!==6||!d.normals||d.normals.length!==9||d.materialKey!=='0x123456789abcdef0'||!t||t.width!==2||t.height!==2||t.format!==6||t.materialKey!==d.materialKey)process.exit(2);"
+
+      - name: Convert RGBA sidecar to PNG and bind material
+        run: |
+          mkdir -p /tmp/marocto-phase6/ready
+          node scripts/mw-draw-capture-build.mjs \
+            /tmp/marocto-phase6/marocto_capture/raw-draws.json \
+            /tmp/marocto-phase6/ready/capture.json \
+            --auto-car
+          test -s /tmp/marocto-phase6/ready/textures/mwtex_123456789abcdef0_s0_a00123000.png
+          node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('/tmp/marocto-phase6/ready/capture.json'));const p=fs.readFileSync('/tmp/marocto-phase6/ready/textures/mwtex_123456789abcdef0_s0_a00123000.png');if(c.metadata.phase!=='models-phase6-textures'||c.metadata.textures!==1||c.materials[0].texture!=='textures/mwtex_123456789abcdef0_s0_a00123000.png'||p.toString('hex',0,8)!=='89504e470d0a1a0a')process.exit(2);"
+
+  windows-mw2005-models-phase6:
+    needs: texture-capture-check
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Phase 6 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check game modules and Phase 6 tools
+        run: |
+          npm run check
+          node --check scripts/mw-draw-capture-lib.mjs
+          node --check scripts/mw-draw-capture-build.mjs
+          node --check scripts/mw-texture-png.mjs
+
+      - name: Exercise Phase 6 PowerShell patch installer
+        shell: pwsh
+        run: |
+          $mock = Join-Path $env:RUNNER_TEMP "nfsmw-nx-mock"
+          New-Item -ItemType Directory -Force (Join-Path $mock "app/src") | Out-Null
+          @'
+          set(NFSMW_SOURCES
+              src/nfsmw_nativo_dibujos.cpp
+          )
+          '@ | Set-Content (Join-Path $mock "app/CMakeLists.txt") -Encoding UTF8
+          @'
+          #include "nfsmw_nativo_dibujos.h"
+          void FakeDraw() {
+              // Diagnostic: one line per combination of VS, PS and render target (at most 32).
+          }
+          '@ | Set-Content (Join-Path $mock "app/src/nfsmw_nativo_dibujos.cpp") -Encoding UTF8
+          & ./tools/nfsmw-nx-capture/apply_to_nfsmw_nx.ps1 -NfsmwNxRoot $mock
+          $cmake = Get-Content (Join-Path $mock "app/CMakeLists.txt") -Raw
+          $draws = Get-Content (Join-Path $mock "app/src/nfsmw_nativo_dibujos.cpp") -Raw
+          if ($cmake -notmatch 'nfsmw_marocto_capture.cpp') { throw "Capture source was not added to CMake" }
+          if ($draws -notmatch 'MAROCTO_MW_CAPTURE_PHASE6') { throw "Phase 6 capture block was not inserted" }
+          if ($draws -notmatch 'SubmitTextureRgba') { throw "Texture capture call was not inserted" }
+          if ($draws -notmatch 'memoria_->TranslatePhysical') { throw "Guest texture memory read was not inserted" }
+          if ($draws -notmatch 'DesplazamientoMosaico2D') { throw "Xenos tiling path was not inserted" }
+          if ($draws -notmatch 'format==18' -or $draws -notmatch 'format==19' -or $draws -notmatch 'format==20') { throw "DXT1/3/5 format handling missing" }
+          if ($draws -notmatch '#include "nfsmw_marocto_capture.h"') { throw "Capture include was not inserted" }
+
+      - name: Run all regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 6 EXE and capture kit
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase6-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+          $kit = "dist/MW2005-Capture-Kit-Phase6"
+          New-Item -ItemType Directory -Force $kit | Out-Null
+          Copy-Item "tools/nfsmw-nx-capture/*" $kit -Recurse -Force
+          Copy-Item "scripts/mw-draw-capture-lib.mjs" $kit -Force
+          Copy-Item "scripts/mw-draw-capture-build.mjs" $kit -Force
+          Copy-Item "scripts/mw-texture-png.mjs" $kit -Force
+          Copy-Item "scripts/mw-capture-to-obj.mjs" $kit -Force
+          Compress-Archive -Path "$kit/*" -DestinationPath "dist/Marocto-Racing-MW2005-Capture-Kit-Phase6.zip" -Force
+          if ((Get-Item "dist/Marocto-Racing-MW2005-Capture-Kit-Phase6.zip").Length -lt 7000) { throw "Capture kit ZIP is unexpectedly small" }
+
+      - name: Upload Phase 6 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Models-Phase6
+          path: |
+            dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase6-x64.exe
+            dist/Marocto-Racing-MW2005-Capture-Kit-Phase6.zip
+          retention-days: 30
+
+      - name: Publish Phase 6 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-models-phase6
+          target_commitish: mw2005-models-phase6-textures
+          name: Marocto Racing v1.4.0 - MW2005 Texture Capture Phase 6
+          prerelease: true
+          body: |
+            Separate experimental PC build. Stable main and Models Phases 1-5 remain unchanged.
+
+            Models Phase 6 adds the user-side texture path to the tested nfsmw-nx model capture:
+            - base-level 2D Xenos texture fetch capture from guest memory
+            - linear and 32x32 tiled addressing through the same layout used by nfsmw-nx
+            - Xenos endian transform before decoding
+            - RGBA8/8888 and DXT1/DXT2-3/DXT4-5 decoding, including AS_16 aliases
+            - captured texture swizzle applied to RGBA output
+            - raw RGBA sidecars converted to PNG by the capture assembler
+            - automatic materialKey -> PNG binding in capture.json
+            - Phase 5 geometry/normal/UV/material capture and auto isolation retained
+            - backward compatibility with captures that have no textures
+
+            No proprietary EA texture files are bundled. Texture pixels are produced only by the user's local capture against their own compatible game files.
+          files: |
+            dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase6-x64.exe
+            dist/Marocto-Racing-MW2005-Capture-Kit-Phase6.zip
+          overwrite_files: true
