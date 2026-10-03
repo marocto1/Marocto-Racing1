@@ -1,0 +1,93 @@
+name: Build MW2005 Models Phase 3
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mw2005-models-phase3-actual]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-mw2005-models-phase3:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Phase 3 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check game modules
+        run: npm run check
+
+      - name: Check draw capture tools
+        run: |
+          node --check scripts/mw-draw-capture-lib.mjs
+          node --check scripts/mw-draw-capture-build.mjs
+          node --check scripts/mw-capture-to-obj.mjs
+
+      - name: Exercise draw capture pipeline
+        shell: pwsh
+        run: |
+          node scripts/mw-draw-capture-build.mjs tools/mw2005-capture/raw-draws.example.json dist/capture-phase3-test.json --frame 120 --tag player-car
+          if (!(Test-Path dist/capture-phase3-test.json)) { throw "Phase 3 capture was not generated" }
+          $capture = Get-Content dist/capture-phase3-test.json -Raw | ConvertFrom-Json
+          if ($capture.format -ne "marocto-mw-native-capture") { throw "Unexpected capture format" }
+          if ($capture.metadata.selectedDraws -ne 2) { throw "Unexpected selected draw count" }
+
+      - name: Run all regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 3 EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase3-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload Phase 3 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Models-Phase3
+          path: dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase3-x64.exe
+          retention-days: 30
+
+      - name: Publish Phase 3 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-models-phase3
+          target_commitish: mw2005-models-phase3-actual
+          name: Marocto Racing v1.4.0 - MW2005 Draw Capture Phase 3
+          prerelease: true
+          body: |
+            Separate experimental PC build. Stable `main`, Physics Phases 2-7 and Models Phases 1-2 remain unchanged.
+
+            Models Phase 3 adds the actual draw-capture toolchain on top of the Phase 2 Native Capture loader:
+            - raw `marocto-mw-draw-stream` v1 interchange format
+            - frame/tag/shader capture filtering
+            - body/wheel separation
+            - material-aware draw merging
+            - position/normal/UV vertex deduplication
+            - strict triangle/index/finite-value validation
+            - direct output to Phase 2 `capture.json`
+            - synthetic capture fixture exercised in CI
+            - documentation for hooking the already-known nfsmw-nx Draw*/vertex/index state
+
+            The EXE still contains no proprietary EA assets. Once geometry is captured/exported from a legally owned copy, put the generated `capture.json` in the matching `Marocto-Racing-Data/Models/mw2005/<car>/` folder.
+          files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase3-x64.exe
+          overwrite_files: true
