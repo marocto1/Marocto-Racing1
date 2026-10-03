@@ -22,18 +22,22 @@ int main(int argc, char** argv) {
        1.0f, 0.0f, -1.0f,
        0.0f, 1.0f,  1.0f,
   };
+  const std::vector<float> normals = {0,1,0, 0,1,0, 0,1,0};
+  const std::vector<float> uvs = {0,0, 1,0, .5f,1};
   const std::vector<uint32_t> indices = {0, 1, 2};
   marocto::mwcapture::DrawInfo info;
   info.frame = 42;
   info.vs = 123;
   info.ps = 456;
   info.object = 0x123400;
-  info.material = "vs123_ps456";
+  info.material_key = 0x123456789ABCDEF0ULL;
+  info.role = "body";
+  info.material = "mwmat_123456789ABCDEF0";
   info.tag = "selftest";
-  marocto::mwcapture::SubmitTriangleDraw(info, positions, indices);
+  marocto::mwcapture::SubmitTriangleDraw(info, positions, normals, uvs, indices);
   marocto::mwcapture::FinishFrame(43);
   const auto raw = out / "marocto_capture" / "raw-draws.json";
-  if (!std::filesystem::exists(raw) || std::filesystem::file_size(raw) < 100) {
+  if (!std::filesystem::exists(raw) || std::filesystem::file_size(raw) < 150) {
     std::cerr << "raw-draws.json was not written\n";
     return 3;
   }
