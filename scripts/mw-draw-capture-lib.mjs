@@ -47,7 +47,8 @@ function normalizeTexture(texture,index){
   if(!Number.isInteger(samplerType)||samplerType<0||samplerType>64)throw Error(`texture ${index} samplerType is invalid`);
   const id=typeof texture.id==='string'&&/^[A-Za-z0-9_.-]+$/.test(texture.id)?texture.id:`mwtex_${index}`;
   const samplerName=typeof texture.samplerName==='string'?texture.samplerName:'';
-  const normalized={id,materialKey:typeof texture.materialKey==='string'?texture.materialKey:null,sampler,samplerType,samplerName,address:Number(texture.address||0),format,width,height,swizzle:Number(texture.swizzle||0),endian:Number(texture.endian||0),tiled:Boolean(texture.tiled),hasPixels:texture.hasPixels!==false&&Boolean(texture.dataFile||texture.texture),dataFile:typeof texture.dataFile==='string'?texture.dataFile:null,texture:typeof texture.texture==='string'?texture.texture:null,stats:texture.stats&&typeof texture.stats==='object'?texture.stats:null};
+  let cubeFace=null;if(texture.cubeFace!=null){cubeFace=Number(texture.cubeFace);if(!Number.isInteger(cubeFace)||cubeFace<0||cubeFace>5)throw Error(`texture ${index} cubeFace is invalid`);}
+  const normalized={id,materialKey:typeof texture.materialKey==='string'?texture.materialKey:null,sampler,samplerType,samplerName,address:Number(texture.address||0),format,width,height,swizzle:Number(texture.swizzle||0),endian:Number(texture.endian||0),tiled:Boolean(texture.tiled),hasPixels:texture.hasPixels!==false&&Boolean(texture.dataFile||texture.texture),dataFile:typeof texture.dataFile==='string'?texture.dataFile:null,texture:typeof texture.texture==='string'?texture.texture:null,stats:texture.stats&&typeof texture.stats==='object'?texture.stats:null,...(cubeFace==null?{}:{cubeFace,cubeFaceName:typeof texture.cubeFaceName==='string'?texture.cubeFaceName:''})};
   normalized.role=typeof texture.role==='string'&&texture.role?texture.role:classifySamplerRole(normalized);
   return normalized;
 }
@@ -118,8 +119,9 @@ function materialTable(doc,draws){
     if(!textures.length)continue;
     const surface=inferMaterialSurface(textures,drawRole.get(material.id)||'body'),maps=buildMaterialMaps(textures),params=materialParameters(surface,textures);
     material.surface=surface;material.maps=maps;material.params=params;
-    material.samplers=textures.map(t=>({id:t.id,sampler:t.sampler,samplerType:t.samplerType,samplerName:t.samplerName,role:t.role,address:t.address,format:t.format,width:t.width,height:t.height,tiled:t.tiled,...(t.texture?{texture:t.texture}:{}),...(t.stats?{stats:t.stats}:{})}));
-    if(maps.albedo)material.texture=maps.albedo;else if(!material.texture){const first=Object.values(maps)[0];if(first)material.texture=first;}
+    material.samplers=textures.map(t=>({id:t.id,sampler:t.sampler,samplerType:t.samplerType,samplerName:t.samplerName,role:t.role,address:t.address,format:t.format,width:t.width,height:t.height,tiled:t.tiled,...(t.cubeFace==null?{}:{cubeFace:t.cubeFace,cubeFaceName:t.cubeFaceName||''}),...(t.texture?{texture:t.texture}:{}),...(t.stats?{stats:t.stats}:{})}));
+    if(maps.albedo)material.texture=maps.albedo;
+    else if(!material.texture){const first=Object.values(maps).find(v=>typeof v==='string');if(first)material.texture=first;}
   }
   return [...map.values()];
 }
@@ -136,14 +138,16 @@ export function buildNativeCapture(raw,{frame=null,tag=null,shader=null,object=n
   for(const d of draws){const role=d.role==='wheel'?'wheel':'body',key=`${d.material}|${d.materialKey||''}|${d.texture||''}|${d.color?.join(',')||''}`;let b=buckets[role].get(key);if(!b){b={material:d.material,materialKey:d.materialKey,texture:d.texture,color:d.color,positions:[],normals:[],uvs:[],indices:[]};buckets[role].set(key,b);}addDrawToBucket(b,d);}
   const body=[...buckets.body.values()].map(stripPrivate);if(!body.length)throw Error('capture has no body geometry');
   const wheelMeshes=[...buckets.wheel.values()].map(stripPrivate),triangleCount=draws.reduce((n,d)=>n+d.indices.length/3,0);
-  const textures=doc.textures.map(t=>({id:t.id,materialKey:t.materialKey,sampler:t.sampler,samplerType:t.samplerType,samplerName:t.samplerName,role:t.role,address:t.address,format:t.format,width:t.width,height:t.height,swizzle:t.swizzle,endian:t.endian,tiled:t.tiled,hasPixels:Boolean(t.texture),...(t.texture?{texture:t.texture}:{}),...(t.stats?{stats:t.stats}:{})}));
+  const textures=doc.textures.map(t=>({id:t.id,materialKey:t.materialKey,sampler:t.sampler,samplerType:t.samplerType,samplerName:t.samplerName,role:t.role,address:t.address,format:t.format,width:t.width,height:t.height,swizzle:t.swizzle,endian:t.endian,tiled:t.tiled,hasPixels:Boolean(t.texture),...(t.cubeFace==null?{}:{cubeFace:t.cubeFace,cubeFaceName:t.cubeFaceName||''}),...(t.texture?{texture:t.texture}:{}),...(t.stats?{stats:t.stats}:{})}));
+  const cubeFaces=textures.filter(t=>Number.isInteger(t.cubeFace)&&t.cubeFace>=0&&t.cubeFace<6&&t.texture).length;
+  const hasPhase8=doc.metadata?.phase==='models-phase8-cubemaps'||cubeFaces>0;
   const hasPhase7=doc.metadata?.phase==='models-phase7-full-materials'||textures.some(t=>t.samplerName||t.samplerType===14||t.role&&t.role!=='albedo'&&t.role!=='detail');
-  const phase=hasPhase7?'models-phase7-full-materials':textures.some(t=>t.texture)?'models-phase6-textures':'models-phase5-materials';
+  const phase=hasPhase8?'models-phase8-cubemaps':hasPhase7?'models-phase7-full-materials':textures.some(t=>t.texture)?'models-phase6-textures':'models-phase5-materials';
   const pixelTextures=textures.filter(t=>t.texture).length;
   return {
     format:OUT_FORMAT,version:OUT_VERSION,source:doc.source,axes:doc.axes,materials:materialTable(doc,draws),body,
     ...(wheelMeshes.length?{wheel:{meshes:wheelMeshes}}:{}),...(textures.length?{textures}:{}),
-    metadata:{...doc.metadata,phase,selectedDraws:draws.length,triangles:triangleCount,uvDraws:draws.filter(d=>d.uvs).length,normalDraws:draws.filter(d=>d.normals).length,textures:pixelTextures,samplerBindings:textures.length,frames:[...new Set(draws.map(d=>d.frame))].sort((a,b)=>a-b)}
+    metadata:{...doc.metadata,phase,selectedDraws:draws.length,triangles:triangleCount,uvDraws:draws.filter(d=>d.uvs).length,normalDraws:draws.filter(d=>d.normals).length,textures:pixelTextures,samplerBindings:textures.length,cubeFaces,frames:[...new Set(draws.map(d=>d.frame))].sort((a,b)=>a-b)}
   };
 }
 
@@ -152,7 +156,7 @@ export function summarizeRawDrawStream(raw){
   for(const d of doc.draws){const t=d.indices.length/3;triangles+=t;roles[d.role]++;if(d.uvs)uvDraws++;if(d.normals)normalDraws++;frames.set(d.frame,(frames.get(d.frame)||0)+t);materials.set(d.material,(materials.get(d.material)||0)+t);if(d.shader!=null)shaders.set(String(d.shader),(shaders.get(String(d.shader))||0)+t);objects.set(String(d.object),(objects.get(String(d.object))||0)+t);}
   for(const t of doc.textures){samplerRoles.set(t.role,(samplerRoles.get(t.role)||0)+1);const name=t.samplerName||`s${t.sampler}`;samplerNames.set(name,(samplerNames.get(name)||0)+1);}
   const top=m=>[...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([id,count])=>({id,count}));
-  return {draws:doc.draws.length,triangles,uvDraws,normalDraws,textures:doc.textures.filter(t=>t.texture||t.dataFile).length,samplerBindings:doc.textures.length,samplerRoles:top(samplerRoles),samplerNames:top(samplerNames),roles,frames:top(frames),materials:top(materials),shaders:top(shaders),objects:top(objects),source:doc.source,axes:doc.axes};
+  return {draws:doc.draws.length,triangles,uvDraws,normalDraws,textures:doc.textures.filter(t=>t.texture||t.dataFile).length,samplerBindings:doc.textures.length,cubeFaces:doc.textures.filter(t=>Number.isInteger(t.cubeFace)&&t.cubeFace>=0&&t.cubeFace<6&&(t.texture||t.dataFile)).length,samplerRoles:top(samplerRoles),samplerNames:top(samplerNames),roles,frames:top(frames),materials:top(materials),shaders:top(shaders),objects:top(objects),source:doc.source,axes:doc.axes};
 }
 
 export const MW_DRAW_STREAM_FORMAT=RAW_FORMAT;
