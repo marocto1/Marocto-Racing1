@@ -1,0 +1,185 @@
+name: Build MW2005 Models Phase 7
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mw2005-models-phase7-materials]
+
+permissions:
+  contents: write
+
+jobs:
+  material-capture-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Phase 7 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compile C++23 capture bridge
+        run: |
+          g++ -std=c++23 -Wall -Wextra -Werror -pedantic \
+            tools/nfsmw-nx-capture/nfsmw_marocto_capture.cpp \
+            tools/nfsmw-nx-capture/selftest.cpp \
+            -o /tmp/marocto-mw-capture-selftest
+
+      - name: Generate Phase 7 sampler and pixel stream
+        run: |
+          mkdir -p /tmp/marocto-phase7
+          /tmp/marocto-mw-capture-selftest /tmp/marocto-phase7
+          test -s /tmp/marocto-phase7/marocto_capture/raw-draws.json
+          test -s /tmp/marocto-phase7/marocto_capture/textures/mwtex_123456789abcdef0_s0_a00123000.rgba
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('/tmp/marocto-phase7/marocto_capture/raw-draws.json'));const d=r.draws[0],a=r.textures.find(t=>t.sampler===0),e=r.textures.find(t=>t.samplerType===14);if(!d.uvs||d.uvs.length!==6||!a||a.samplerName!=='DIFFUSEMAP_SAMPLER'||!a.hasPixels||!e||e.samplerName!=='ENVMAP_CUBE_SAMPLER'||e.hasPixels||e.dataFile)process.exit(2);"
+
+      - name: Build Phase 7 material graph and PNG
+        run: |
+          mkdir -p /tmp/marocto-phase7/ready
+          node scripts/mw-draw-capture-build.mjs \
+            /tmp/marocto-phase7/marocto_capture/raw-draws.json \
+            /tmp/marocto-phase7/ready/capture.json \
+            --auto-car
+          test -s /tmp/marocto-phase7/ready/textures/mwtex_123456789abcdef0_s0_a00123000.png
+          node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('/tmp/marocto-phase7/ready/capture.json'));const m=c.materials[0],env=c.textures.find(t=>t.role==='environment');if(c.metadata.phase!=='models-phase7-full-materials'||c.metadata.textures!==1||c.metadata.samplerBindings!==2||m.maps.albedo!=='textures/mwtex_123456789abcdef0_s0_a00123000.png'||m.surface!=='paint'||!(m.params.reflectivity>.3)||!env||env.texture)process.exit(2);"
+
+  windows-mw2005-models-phase7:
+    needs: material-capture-check
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Phase 7 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check game modules and Phase 7 tools
+        run: |
+          npm run check
+          node --check scripts/mw-draw-capture-lib.mjs
+          node --check scripts/mw-draw-capture-build.mjs
+          node --check scripts/mw-texture-png.mjs
+          node --check scripts/mw-material-classifier.mjs
+
+      - name: Exercise Phase 7 PowerShell patch installer
+        shell: pwsh
+        run: |
+          $mock = Join-Path $env:RUNNER_TEMP "nfsmw-nx-mock"
+          New-Item -ItemType Directory -Force (Join-Path $mock "app/src") | Out-Null
+          @'
+          set(NFSMW_SOURCES
+              src/nfsmw_nativo_dibujos.cpp
+          )
+          '@ | Set-Content (Join-Path $mock "app/CMakeLists.txt") -Encoding UTF8
+          @'
+          #include "nfsmw_nativo_dibujos.h"
+          void FakeDraw() {
+              // Diagnostic: one line per combination of VS, PS and render target (at most 32).
+          }
+          '@ | Set-Content (Join-Path $mock "app/src/nfsmw_nativo_dibujos.cpp") -Encoding UTF8
+          @'
+          #pragma once
+          #include <span>
+          #include <vector>
+          struct SamplerShader {
+            uint16_t registro = 0;
+            uint16_t tipo = 0;  // D3DXPARAMETER_TYPE: 10-12 = 2D, 13 = 3D, 14 = cubo
+            bool mapa_sombras = false;
+          };
+          '@ | Set-Content (Join-Path $mock "app/src/nfsmw_nativo_shaders.h") -Encoding UTF8
+          @'
+          void FakeSamplerParse() {
+            SamplerShader sampler;
+            const uint32_t tipo = 0;
+            sampler.tipo = c.Hay(base + tipo, 4) ? c.U16(base + tipo + 2) : 0;
+          }
+          '@ | Set-Content (Join-Path $mock "app/src/nfsmw_nativo_shaders.cpp") -Encoding UTF8
+          & ./tools/nfsmw-nx-capture/apply_phase7_materials_to_nfsmw_nx.ps1 -NfsmwNxRoot $mock
+          $cmake = Get-Content (Join-Path $mock "app/CMakeLists.txt") -Raw
+          $draws = Get-Content (Join-Path $mock "app/src/nfsmw_nativo_dibujos.cpp") -Raw
+          $shaderH = Get-Content (Join-Path $mock "app/src/nfsmw_nativo_shaders.h") -Raw
+          $shaderCpp = Get-Content (Join-Path $mock "app/src/nfsmw_nativo_shaders.cpp") -Raw
+          if ($cmake -notmatch 'nfsmw_marocto_capture.cpp') { throw "Capture source was not added to CMake" }
+          if ($draws -notmatch 'MAROCTO_MW_CAPTURE_PHASE7') { throw "Phase 7 capture block was not inserted" }
+          if ($draws -notmatch 'SubmitTextureBinding') { throw "Sampler metadata capture missing" }
+          if ($draws -notmatch 'sampler_name=s.nombre') { throw "Sampler names are not forwarded" }
+          if ($draws -notmatch 'sampler_type=s.tipo') { throw "Sampler type is not forwarded" }
+          if ($draws -notmatch 'marocto_exportable_2d') { throw "2D pixel export gate missing" }
+          if ($shaderH -notmatch 'std::string nombre') { throw "SamplerShader name field missing" }
+          if ($shaderCpp -notmatch 'sampler.nombre.assign') { throw "Constant-table sampler name parser missing" }
+
+      - name: Run all regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 7 EXE and capture kit
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase7-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+          $kit = "dist/MW2005-Capture-Kit-Phase7"
+          New-Item -ItemType Directory -Force $kit | Out-Null
+          Copy-Item "tools/nfsmw-nx-capture/*" $kit -Recurse -Force
+          Copy-Item "scripts/mw-draw-capture-lib.mjs" $kit -Force
+          Copy-Item "scripts/mw-draw-capture-build.mjs" $kit -Force
+          Copy-Item "scripts/mw-texture-png.mjs" $kit -Force
+          Copy-Item "scripts/mw-material-classifier.mjs" $kit -Force
+          Copy-Item "scripts/mw-capture-to-obj.mjs" $kit -Force
+          Compress-Archive -Path "$kit/*" -DestinationPath "dist/Marocto-Racing-MW2005-Capture-Kit-Phase7.zip" -Force
+          if ((Get-Item "dist/Marocto-Racing-MW2005-Capture-Kit-Phase7.zip").Length -lt 9000) { throw "Capture kit ZIP is unexpectedly small" }
+
+      - name: Upload Phase 7 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Models-Phase7
+          path: |
+            dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase7-x64.exe
+            dist/Marocto-Racing-MW2005-Capture-Kit-Phase7.zip
+          retention-days: 30
+
+      - name: Publish Phase 7 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-models-phase7
+          target_commitish: mw2005-models-phase7-materials
+          name: Marocto Racing v1.4.0 - MW2005 Full Car Materials Phase 7
+          prerelease: true
+          body: |
+            Separate experimental PC build. Stable main and Models Phases 1-6 remain unchanged.
+
+            Models Phase 7 extends the tested user-side nfsmw-nx capture pipeline with:
+            - original D3D constant-table sampler names preserved by the capture patch
+            - sampler roles classified as albedo, detail, normal, emissive, specular, mask, rubber, shadow or environment
+            - metadata-only cube/environment sampler capture even when cube pixels are not exported yet
+            - alpha/luminance statistics for exported 2D textures
+            - automatic paint/glass/light/rubber/metal/wheel/detail material classification
+            - generated roughness, reflectivity, opacity, emissive, normal and detail strengths
+            - multi-map material graphs stored in capture.json
+            - WebGL2 albedo/detail/normal/emissive/specular/environment/mask material shader
+            - derivative-based tangent frame for captured normal maps
+            - Fresnel/procedural-environment reflections and alpha blended glass
+            - Phase 6 RGBA/DXT texture extraction retained
+
+            Cube/environment sampler identity is captured in Phase 7, but cube-map faces are not copied to PNG yet; when no 2D environment map exists the renderer uses the captured material reflectivity with a procedural sky reflection. No proprietary EA assets are bundled.
+          files: |
+            dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase7-x64.exe
+            dist/Marocto-Racing-MW2005-Capture-Kit-Phase7.zip
+          overwrite_files: true
