@@ -12,31 +12,28 @@ struct DrawInfo {
   uint32_t vs = 0;
   int32_t ps = -1;
   uint64_t object = 0;
-  std::string_view role = "body";
+  uint64_t material_key = 0;
+  std::string_view role = "auto";
   std::string_view material = "default";
   std::string_view tag = {};
 };
 
-// Call once from nfsmw-nx startup / renderer initialization.
 void SetOutputDirectory(const std::filesystem::path& directory);
-
-// Checked at most once for every new frame. If a file named
-// "marocto_capture.trigger" exists in the output directory, the bridge removes
-// it and captures exactly this frame.
 bool WantsFrame(uint64_t frame);
 
-// Positions are xyz floats. Indices MUST already be triangle-list indices
-// local to the supplied position array. Normals/UV are intentionally optional
-// in Phase 4; Marocto Racing computes face normals if they are absent.
+// Phase 4-compatible geometry-only overload.
 void SubmitTriangleDraw(const DrawInfo& info,
                         std::span<const float> positions,
                         std::span<const uint32_t> indices);
 
-// Call once when the renderer notices a frame transition. It closes a captured
-// frame and writes a valid marocto-mw-draw-stream v1 JSON document.
-void FinishFrame(uint64_t frame);
+// Phase 5 path. normals = xyz per vertex, uvs = uv per vertex. Empty spans are valid.
+void SubmitTriangleDraw(const DrawInfo& info,
+                        std::span<const float> positions,
+                        std::span<const float> normals,
+                        std::span<const float> uvs,
+                        std::span<const uint32_t> indices);
 
-// Forces any pending capture to disk (safe to call at shutdown).
+void FinishFrame(uint64_t frame);
 void Flush();
 
 }  // namespace marocto::mwcapture
