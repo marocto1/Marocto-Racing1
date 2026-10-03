@@ -14,8 +14,8 @@ where node >nul 2>nul || (
 node "%~dp0mw-draw-capture-build.mjs" "%INPUT%" "%OUTPUT%" --auto-car
 if errorlevel 1 exit /b %errorlevel%
 echo.
-echo Phase 7 full-material capture built:
+echo Phase 8 real-cubemap capture built:
 echo   %OUTPUT%
-echo PNG textures are next to capture.json in the textures folder.
-echo Sampler roles and material parameters are embedded in capture.json.
+echo PNG textures and cubemap faces are next to capture.json in the textures folder.
+echo Sampler roles, material parameters and complete 6-face environmentCube maps are embedded in capture.json.
 endlocal
