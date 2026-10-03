@@ -16,7 +16,7 @@ $cmakeText = Get-Content $cmake -Raw
 if ($cmakeText -notmatch 'src/nfsmw_marocto_capture\.cpp') {
   $anchor = '    src/nfsmw_nativo_dibujos.cpp'
   if (-not $cmakeText.Contains($anchor)) { throw 'CMake anchor not found; nfsmw-nx changed, patch not applied.' }
-  $cmakeText = $cmakeText.Replace($anchor, "$anchor`r`n    src/nfsmw_marocto_capture.cpp")
+  $cmakeText = $cmakeText.Replace($anchor, $anchor + "`r`n    src/nfsmw_marocto_capture.cpp")
   Set-Content $cmake $cmakeText -Encoding UTF8
 }
 
@@ -24,7 +24,7 @@ $text = Get-Content $draws -Raw
 if ($text -notmatch '#include "nfsmw_marocto_capture.h"') {
   $includeAnchor = '#include "nfsmw_nativo_dibujos.h"'
   if (-not $text.Contains($includeAnchor)) { throw 'Include anchor not found; patch not applied.' }
-  $text = $text.Replace($includeAnchor, "$includeAnchor`r`n#include \"nfsmw_marocto_capture.h\"")
+  $text = $text.Replace($includeAnchor, $includeAnchor + "`r`n" + '#include "nfsmw_marocto_capture.h"')
 }
 
 $marker = '// MAROCTO_MW_CAPTURE_PHASE4'
