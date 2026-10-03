@@ -1,0 +1,35 @@
+{
+  "format": "marocto-mw-draw-stream",
+  "version": 1,
+  "source": "nfsmw-nx-example",
+  "axes": { "forward": "z", "up": "y" },
+  "materials": [
+    { "id": "paint", "color": [0.75, 0.78, 0.82], "texture": "textures/paint.png" },
+    { "id": "tire", "color": [0.08, 0.08, 0.08] }
+  ],
+  "metadata": { "note": "Synthetic geometry only; replace with a draw capture from a legally owned copy." },
+  "draws": [
+    {
+      "id": 1,
+      "frame": 120,
+      "role": "body",
+      "tag": "player-car",
+      "shader": "car-body",
+      "material": "paint",
+      "positions": [-1,0,-2, 1,0,-2, 1,1,2, -1,1,2],
+      "normals": [0,1,0, 0,1,0, 0,1,0, 0,1,0],
+      "uvs": [0,0, 1,0, 1,1, 0,1],
+      "indices": [0,1,2, 0,2,3]
+    },
+    {
+      "id": 2,
+      "frame": 120,
+      "role": "wheel",
+      "tag": "player-car",
+      "shader": "car-wheel",
+      "material": "tire",
+      "positions": [-0.2,0,-0.35, 0.2,0,-0.35, 0.2,0,0.35, -0.2,0,0.35],
+      "indices": [0,1,2, 0,2,3]
+    }
+  ]
+}
