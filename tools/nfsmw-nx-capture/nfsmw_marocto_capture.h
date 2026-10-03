@@ -18,6 +18,18 @@ struct DrawInfo {
   std::string_view tag = {};
 };
 
+struct TextureInfo {
+  uint64_t material_key = 0;
+  uint32_t sampler = 0;
+  uint32_t address = 0;
+  uint32_t format = 0;
+  uint32_t width = 0;
+  uint32_t height = 0;
+  uint32_t swizzle = 0;
+  uint32_t endian = 0;
+  bool tiled = false;
+};
+
 void SetOutputDirectory(const std::filesystem::path& directory);
 bool WantsFrame(uint64_t frame);
 
@@ -26,12 +38,15 @@ void SubmitTriangleDraw(const DrawInfo& info,
                         std::span<const float> positions,
                         std::span<const uint32_t> indices);
 
-// Phase 5 path. normals = xyz per vertex, uvs = uv per vertex. Empty spans are valid.
+// Phase 5+ geometry path. normals = xyz per vertex, uvs = uv per vertex. Empty spans are valid.
 void SubmitTriangleDraw(const DrawInfo& info,
                         std::span<const float> positions,
                         std::span<const float> normals,
                         std::span<const float> uvs,
                         std::span<const uint32_t> indices);
+
+// Phase 6 path: decoded base-level RGBA8 pixels. Repeated bindings are deduplicated.
+void SubmitTextureRgba(const TextureInfo& info, std::span<const uint8_t> rgba);
 
 void FinishFrame(uint64_t frame);
 void Flush();
