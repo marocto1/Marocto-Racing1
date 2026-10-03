@@ -29,14 +29,14 @@ export function parseMTL(text){
 export function parseOBJ(text,materials=new Map()){
   const v=[],vn=[],vt=[],sections=new Map();let material='default';
   const sec=()=>{if(!sections.has(material))sections.set(material,{material,positions:[],normals:[],uvs:[],color:colorOf(materials,material),texture:textureOf(materials,material)});return sections.get(material);};
+  const readPos=id=>v[resolveIndex(id.v,v.length)]||[0,0,0];
+  const token=s=>{const [a,b,c]=s.split('/');return {v:a,t:b||null,n:c||null};};
   const emit=(a,b,c)=>{
     const s=sec(),ids=[a,b,c],pa=readPos(a),pb=readPos(b),pc=readPos(c);
     let nx=0,ny=1,nz=0;
     if(!a.n||!b.n||!c.n){const ux=pb[0]-pa[0],uy=pb[1]-pa[1],uz=pb[2]-pa[2],vx=pc[0]-pa[0],vy=pc[1]-pa[1],vz=pc[2]-pa[2];nx=uy*vz-uz*vy;ny=uz*vx-ux*vz;nz=ux*vy-uy*vx;const l=Math.hypot(nx,ny,nz)||1;nx/=l;ny/=l;nz/=l;}
     for(const id of ids){const p=readPos(id);s.positions.push(...p);if(id.n){const n=vn[resolveIndex(id.n,vn.length)]||[nx,ny,nz];s.normals.push(...n);}else s.normals.push(nx,ny,nz);if(id.t){const t=vt[resolveIndex(id.t,vt.length)]||[0,0];s.uvs.push(t[0],1-t[1]);}else s.uvs.push(0,0);}
   };
-  const readPos=id=>v[resolveIndex(id.v,v.length)]||[0,0,0];
-  const token=s=>{const [a,b,c]=s.split('/');return {v:a,t:b||null,n:c||null};};
   for(const raw of text.split(/\r?\n/)){
     const line=raw.trim();if(!line||line.startsWith('#'))continue;const [cmd,...rest]=line.split(/\s+/);
     if(cmd==='v'&&rest.length>=3)v.push(rest.slice(0,3).map(Number));
@@ -63,13 +63,15 @@ export function normalizeSections(sections,spec,{forward='z',up='y',wheel=false}
 
 async function fetchText(url){const r=await fetch(new URL(url,import.meta.url));if(!r.ok)throw Error(`${r.status} ${url}`);return r.text();}
 async function maybeText(url){try{return await fetchText(url);}catch{return null;}}
+function resolveTextures(sections,base){for(const s of sections)if(s.texture){try{s.textureURL=new URL(s.texture,base).href;}catch{s.textureURL=null;}}return sections;}
 
 export async function loadImportedCar(spec,entry){
   if(!entry)return null;
   const bodyText=await maybeText(entry.body);if(!bodyText)return null;
   const mtlText=entry.mtl?await maybeText(entry.mtl):null,materials=mtlText?parseMTL(mtlText):new Map();
-  const body=normalizeSections(parseOBJ(bodyText,materials),spec,entry);
-  let wheel=null;if(entry.wheel){const wheelText=await maybeText(entry.wheel);if(wheelText)wheel=normalizeSections(parseOBJ(wheelText,materials),spec,{...entry,wheel:true});}
+  const materialBase=new URL(entry.mtl||entry.body,import.meta.url);
+  const body=resolveTextures(normalizeSections(parseOBJ(bodyText,materials),spec,entry),materialBase);
+  let wheel=null;if(entry.wheel){const wheelText=await maybeText(entry.wheel);if(wheelText)wheel=resolveTextures(normalizeSections(parseOBJ(wheelText,materials),spec,{...entry,wheel:true}),materialBase);}
   return {source:'mw2005-import',id:entry.id,body,wheel,wheelX:spec.width*.505,wheelZ:spec.wheelbase*.5,wheelRadius:.35};
 }
 
