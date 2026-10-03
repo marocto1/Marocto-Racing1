@@ -2,8 +2,6 @@ name: Build MW2005 Grip Phase 6
 
 on:
   workflow_dispatch:
-  push:
-    branches: [physics-nfsmw-experimental]
 
 permissions:
   contents: write
@@ -13,8 +11,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout Phase 6 branch
+      - name: Checkout frozen Phase 6 release
         uses: actions/checkout@v4
+        with:
+          ref: 95e5d63da535dd5a6d49fbfe6a6a1810fc40b5c0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -56,29 +56,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: pc-mw2005-grip-phase6
-          target_commitish: physics-nfsmw-experimental
+          target_commitish: 95e5d63da535dd5a6d49fbfe6a6a1810fc40b5c0
           name: Marocto Racing v1.4.0 - MW2005 Grip & Drivetrain Phase 6
           prerelease: true
           body: |
-            Separate experimental build. Stable `main` and Phases 2-5 remain unchanged.
+            Frozen Phase 6 build. Stable `main` and previous phases remain unchanged.
 
-            Phase 6 keeps the Phase 5 four-wheel suspension and focuses on controllable road handling:
-            - progressive keyboard steering command instead of instant full input
-            - high-speed steering shaping
-            - traction control from driven-wheel slip
-            - throttle intervention without removing wheelspin entirely
-            - ABS-style service-brake release after lock detection
-            - ESC-like yaw-rate correction for unintended snap-oversteer
-            - lateral-velocity recovery to stop endless fishtailing
-            - deep drift-friction state is no longer entered by ordinary road cornering
-            - explicit handbrake drift remains available
-            - spin catch at very large unintended slip angles
-            - TCS / ABS / ESC diagnostics in the race HUD
-            - regression tests for assists and complete AI laps on RWD M3 GTR and AWD Evo VIII profiles
-
-            Phase 6 is a road-focused control layer over Marocto Racing's existing MW-family planar WebGL2 physics adaptation. It does not claim to be the original EA executable.
-
-            Underlying adapted MW-family source remains MPL-2.0.
-            Upstream reference: https://github.com/gaycoderprincess/UndercoverMWPhysics
+            Phase 6 is the road-grip/TCS/ABS/ESC milestone before the Phase 7 drivetrain work.
           files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Grip-Phase6-x64.exe
           overwrite_files: true
