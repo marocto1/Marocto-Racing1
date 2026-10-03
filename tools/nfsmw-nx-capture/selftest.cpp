@@ -35,11 +35,34 @@ int main(int argc, char** argv) {
   info.material = "mwmat_123456789ABCDEF0";
   info.tag = "selftest";
   marocto::mwcapture::SubmitTriangleDraw(info, positions, normals, uvs, indices);
+
+  const std::vector<uint8_t> rgba = {
+      255,0,0,255, 0,255,0,255,
+      0,0,255,255, 255,255,255,255,
+  };
+  marocto::mwcapture::TextureInfo texture;
+  texture.material_key = info.material_key;
+  texture.sampler = 0;
+  texture.address = 0x00123000;
+  texture.format = 6;
+  texture.width = 2;
+  texture.height = 2;
+  texture.swizzle = 0x688;
+  texture.endian = 0;
+  texture.tiled = false;
+  marocto::mwcapture::SubmitTextureRgba(texture, rgba);
+
   marocto::mwcapture::FinishFrame(43);
   const auto raw = out / "marocto_capture" / "raw-draws.json";
-  if (!std::filesystem::exists(raw) || std::filesystem::file_size(raw) < 150) {
+  if (!std::filesystem::exists(raw) || std::filesystem::file_size(raw) < 250) {
     std::cerr << "raw-draws.json was not written\n";
     return 3;
+  }
+  const auto pixels = out / "marocto_capture" / "textures" /
+                      "mwtex_123456789abcdef0_s0_a00123000.rgba";
+  if (!std::filesystem::exists(pixels) || std::filesystem::file_size(pixels) != rgba.size()) {
+    std::cerr << "texture RGBA sidecar was not written\n";
+    return 4;
   }
   std::cout << raw.string() << '\n';
   return 0;
