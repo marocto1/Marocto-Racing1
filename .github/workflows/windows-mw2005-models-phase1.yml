@@ -1,0 +1,77 @@
+name: Build MW2005 Models Phase 1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mw2005-models-phase1-actual]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-mw2005-models-phase1:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout model integration branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check all modules
+        run: npm run check
+
+      - name: Run all regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare model-pipeline EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase1-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload model-pipeline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Models-Phase1
+          path: dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase1-x64.exe
+          retention-days: 30
+
+      - name: Publish model-pipeline prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-models-phase1
+          target_commitish: mw2005-models-phase1-actual
+          name: Marocto Racing v1.4.0 - MW2005 Models Integration Phase 1
+          prerelease: true
+          body: |
+            Separate experimental PC build. Stable `main` and Physics Phases 2-7 remain unchanged.
+
+            This build adds the external car-model pipeline while preserving Phase 7 drivetrain physics:
+            - OBJ body and separate wheel loading
+            - MTL material colors and map_Kd texture support
+            - automatic scaling to Marocto Racing physics dimensions
+            - imported models in garage preview and race rendering
+            - procedural fallback when an external model is missing or invalid
+            - external personal model override directory beside the portable EXE:
+              `Marocto-Racing-Data/Models/mw2005/<car>/...`
+            - model parser/normalization regression tests
+
+            This release intentionally does not redistribute proprietary EA game assets. Models exported from a legally owned copy can be dropped into the override directory without rebuilding the EXE.
+          files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase1-x64.exe
+          overwrite_files: true
