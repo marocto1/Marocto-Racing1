@@ -60,13 +60,26 @@ int main(int argc, char** argv) {
   environment.sampler_type = 14;
   environment.sampler_name = "ENVMAP_CUBE_SAMPLER";
   environment.address = 0x00500000;
-  environment.width = 64;
-  environment.height = 64;
+  environment.width = 2;
+  environment.height = 2;
+  environment.cube_face = -1;
   marocto::mwcapture::SubmitTextureBinding(environment);
+  for (int face = 0; face < 6; ++face) {
+    auto cube = environment;
+    cube.cube_face = face;
+    cube.address = environment.address + uint32_t(face) * 0x1000;
+    std::vector<uint8_t> face_rgba(2 * 2 * 4, 255);
+    for (size_t p = 0; p < face_rgba.size(); p += 4) {
+      face_rgba[p + 0] = uint8_t(30 + face * 31);
+      face_rgba[p + 1] = uint8_t(220 - face * 23);
+      face_rgba[p + 2] = uint8_t(45 + face * 17);
+    }
+    marocto::mwcapture::SubmitTextureRgba(cube, face_rgba);
+  }
 
   marocto::mwcapture::FinishFrame(43);
   const auto raw = out / "marocto_capture" / "raw-draws.json";
-  if (!std::filesystem::exists(raw) || std::filesystem::file_size(raw) < 350) {
+  if (!std::filesystem::exists(raw) || std::filesystem::file_size(raw) < 700) {
     std::cerr << "raw-draws.json was not written\n";
     return 3;
   }
@@ -75,6 +88,15 @@ int main(int argc, char** argv) {
   if (!std::filesystem::exists(pixels) || std::filesystem::file_size(pixels) != rgba.size()) {
     std::cerr << "texture RGBA sidecar was not written\n";
     return 4;
+  }
+  const auto cube_px = out / "marocto_capture" / "textures" /
+                       "mwtex_123456789abcdef0_s3_fpx_a00500000.rgba";
+  const auto cube_nz = out / "marocto_capture" / "textures" /
+                       "mwtex_123456789abcdef0_s3_fnz_a00505000.rgba";
+  if (!std::filesystem::exists(cube_px) || !std::filesystem::exists(cube_nz) ||
+      std::filesystem::file_size(cube_px) != 16 || std::filesystem::file_size(cube_nz) != 16) {
+    std::cerr << "cubemap RGBA sidecars were not written\n";
+    return 5;
   }
   std::cout << raw.string() << '\n';
   return 0;
