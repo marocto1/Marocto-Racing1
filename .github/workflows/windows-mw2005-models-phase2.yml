@@ -1,0 +1,83 @@
+name: Build MW2005 Models Phase 2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mw2005-models-phase2-native-capture]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-mw2005-models-phase2:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Native Capture branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check all game modules
+        run: npm run check
+
+      - name: Check Native Capture converter
+        run: node --check scripts/mw-capture-to-obj.mjs
+
+      - name: Run all regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 2 EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase2-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload Phase 2 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Models-Phase2
+          path: dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase2-x64.exe
+          retention-days: 30
+
+      - name: Publish Phase 2 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-models-phase2
+          target_commitish: mw2005-models-phase2-native-capture
+          name: Marocto Racing v1.4.0 - MW2005 Models Native Capture Phase 2
+          prerelease: true
+          body: |
+            Separate experimental PC build. Stable `main`, Physics Phases 2-7, and Models Phase 1 remain unchanged.
+
+            Models Phase 2 adds a stable Native Capture interchange path on top of Phase 1:
+            - `capture.json` loading before OBJ/MTL fallback
+            - indexed triangle geometry, UVs, normals and material/texture references
+            - automatic face-normal generation when a capture has no normals
+            - strict validation of format version, axes, finite values and indices
+            - automatic per-car folders beside the portable EXE
+            - local README with exact accepted filenames
+            - Node converter from Native Capture v1 to OBJ/MTL for inspection/editing
+            - regression tests for capture expansion, materials, normals and invalid geometry
+
+            Load priority per car:
+            `capture.json -> body.obj/body.mtl/wheel.obj -> procedural fallback`.
+
+            This build does not redistribute proprietary EA game assets. The public loader is designed for geometry captured/exported from a legally owned copy of NFSMW.
+          files: dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase2-x64.exe
+          overwrite_files: true
