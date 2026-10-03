@@ -36,6 +36,15 @@ function normalizeDraw(draw,index){
     tag:typeof draw.tag==='string'?draw.tag:'',shader:draw.shader??null,object:draw.object??null
   };
 }
+function normalizeTexture(texture,index){
+  if(!texture||typeof texture!=='object')throw Error(`texture ${index} must be an object`);
+  const width=Number(texture.width),height=Number(texture.height),sampler=Number(texture.sampler??0),format=Number(texture.format??-1);
+  if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width>8192||height>8192)throw Error(`texture ${index} dimensions are invalid`);
+  if(!Number.isInteger(sampler)||sampler<0||sampler>31)throw Error(`texture ${index} sampler is invalid`);
+  if(!Number.isInteger(format)||format<0||format>63)throw Error(`texture ${index} format is invalid`);
+  const id=typeof texture.id==='string'&&/^[A-Za-z0-9_.-]+$/.test(texture.id)?texture.id:`mwtex_${index}`;
+  return {id,materialKey:typeof texture.materialKey==='string'?texture.materialKey:null,sampler,address:Number(texture.address||0),format,width,height,swizzle:Number(texture.swizzle||0),endian:Number(texture.endian||0),tiled:Boolean(texture.tiled),dataFile:typeof texture.dataFile==='string'?texture.dataFile:null,texture:typeof texture.texture==='string'?texture.texture:null};
+}
 export function parseRawDrawStream(input){
   const doc=typeof input==='string'?JSON.parse(input):input;
   if(!doc||typeof doc!=='object')throw Error('raw capture root must be an object');
@@ -45,7 +54,7 @@ export function parseRawDrawStream(input){
   if(doc.draws.length>MAX_DRAWS)throw Error(`draw count exceeds ${MAX_DRAWS}`);
   const axes=doc.axes||{forward:'z',up:'y'};
   if(!['x','y','z'].includes(axes.forward)||!['x','y','z'].includes(axes.up)||axes.forward===axes.up)throw Error('axes must use two distinct x/y/z axes');
-  return {source:doc.source||'nfsmw-nx-draw-capture',axes,materials:Array.isArray(doc.materials)?doc.materials:[],draws:doc.draws.map(normalizeDraw),metadata:doc.metadata||{}};
+  return {source:doc.source||'nfsmw-nx-draw-capture',axes,materials:Array.isArray(doc.materials)?doc.materials:[],textures:Array.isArray(doc.textures)?doc.textures.map(normalizeTexture):[],draws:doc.draws.map(normalizeDraw),metadata:doc.metadata||{}};
 }
 
 function bounds(draws){
@@ -94,7 +103,7 @@ function addDrawToBucket(bucket,d){
 }
 function stripPrivate(b){delete b._map;if(!b.normals.length)delete b.normals;if(!b.uvs.length)delete b.uvs;if(!b.texture)delete b.texture;if(!b.color)delete b.color;if(!b.materialKey)delete b.materialKey;return b;}
 function materialColor(id){let h=2166136261;for(const c of id){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}return [.38+((h>>>0)&255)/255*.42,.38+((h>>>8)&255)/255*.42,.38+((h>>>16)&255)/255*.42].map(v=>q(v,1000));}
-function materialTable(doc,draws){const map=new Map();for(const m of doc.materials||[])if(m?.id)map.set(m.id,{...m});for(const d of draws){if(!map.has(d.material))map.set(d.material,{id:d.material,color:d.color||materialColor(d.material),...(d.texture?{texture:d.texture}:{}),...(d.materialKey?{materialKey:d.materialKey}:{})});}return [...map.values()];}
+function materialTable(doc,draws){const map=new Map();for(const m of doc.materials||[])if(m?.id)map.set(m.id,{...m});for(const d of draws){if(!map.has(d.material))map.set(d.material,{id:d.material,color:d.color||materialColor(d.material),...(d.texture?{texture:d.texture}:{}),...(d.materialKey?{materialKey:d.materialKey}:{})});else if(d.texture&&!map.get(d.material).texture)map.get(d.material).texture=d.texture;}return [...map.values()];}
 
 export function buildNativeCapture(raw,{frame=null,tag=null,shader=null,object=null,minTriangles=1,autoCar=false}={}){
   let doc=autoCar?autoIsolateCarDraws(raw):parseRawDrawStream(raw),draws=doc.draws;
@@ -108,10 +117,11 @@ export function buildNativeCapture(raw,{frame=null,tag=null,shader=null,object=n
   for(const d of draws){const role=d.role==='wheel'?'wheel':'body',key=`${d.material}|${d.texture||''}|${d.color?.join(',')||''}`;let b=buckets[role].get(key);if(!b){b={material:d.material,materialKey:d.materialKey,texture:d.texture,color:d.color,positions:[],normals:[],uvs:[],indices:[]};buckets[role].set(key,b);}addDrawToBucket(b,d);}
   const body=[...buckets.body.values()].map(stripPrivate);if(!body.length)throw Error('capture has no body geometry');
   const wheelMeshes=[...buckets.wheel.values()].map(stripPrivate),triangleCount=draws.reduce((n,d)=>n+d.indices.length/3,0);
+  const textures=doc.textures.filter(t=>t.texture).map(t=>({id:t.id,materialKey:t.materialKey,sampler:t.sampler,address:t.address,format:t.format,width:t.width,height:t.height,swizzle:t.swizzle,endian:t.endian,tiled:t.tiled,texture:t.texture}));
   return {
     format:OUT_FORMAT,version:OUT_VERSION,source:doc.source,axes:doc.axes,materials:materialTable(doc,draws),body,
-    ...(wheelMeshes.length?{wheel:{meshes:wheelMeshes}}:{}),
-    metadata:{...doc.metadata,phase:'models-phase5-materials',selectedDraws:draws.length,triangles:triangleCount,uvDraws:draws.filter(d=>d.uvs).length,normalDraws:draws.filter(d=>d.normals).length,frames:[...new Set(draws.map(d=>d.frame))].sort((a,b)=>a-b)}
+    ...(wheelMeshes.length?{wheel:{meshes:wheelMeshes}}:{}),...(textures.length?{textures}:{}),
+    metadata:{...doc.metadata,phase:doc.textures.length?'models-phase6-textures':'models-phase5-materials',selectedDraws:draws.length,triangles:triangleCount,uvDraws:draws.filter(d=>d.uvs).length,normalDraws:draws.filter(d=>d.normals).length,textures:textures.length,frames:[...new Set(draws.map(d=>d.frame))].sort((a,b)=>a-b)}
   };
 }
 
@@ -119,7 +129,7 @@ export function summarizeRawDrawStream(raw){
   const doc=parseRawDrawStream(raw),frames=new Map(),roles={auto:0,body:0,wheel:0,scene:0},materials=new Map(),shaders=new Map(),objects=new Map();let triangles=0,uvDraws=0,normalDraws=0;
   for(const d of doc.draws){const t=d.indices.length/3;triangles+=t;roles[d.role]++;if(d.uvs)uvDraws++;if(d.normals)normalDraws++;frames.set(d.frame,(frames.get(d.frame)||0)+t);materials.set(d.material,(materials.get(d.material)||0)+t);if(d.shader!=null)shaders.set(String(d.shader),(shaders.get(String(d.shader))||0)+t);objects.set(String(d.object),(objects.get(String(d.object))||0)+t);}
   const top=m=>[...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([id,count])=>({id,count}));
-  return {draws:doc.draws.length,triangles,uvDraws,normalDraws,roles,frames:top(frames),materials:top(materials),shaders:top(shaders),objects:top(objects),source:doc.source,axes:doc.axes};
+  return {draws:doc.draws.length,triangles,uvDraws,normalDraws,textures:doc.textures.length,roles,frames:top(frames),materials:top(materials),shaders:top(shaders),objects:top(objects),source:doc.source,axes:doc.axes};
 }
 
 export const MW_DRAW_STREAM_FORMAT=RAW_FORMAT;
