@@ -1,3 +1,5 @@
+import {classifySamplerRole,inferMaterialSurface,materialParameters,buildMaterialMaps} from './mw-material-classifier.mjs';
+
 const RAW_FORMAT='marocto-mw-draw-stream';
 const RAW_VERSION=1;
 const OUT_FORMAT='marocto-mw-native-capture';
@@ -38,12 +40,16 @@ function normalizeDraw(draw,index){
 }
 function normalizeTexture(texture,index){
   if(!texture||typeof texture!=='object')throw Error(`texture ${index} must be an object`);
-  const width=Number(texture.width),height=Number(texture.height),sampler=Number(texture.sampler??0),format=Number(texture.format??-1);
+  const width=Number(texture.width),height=Number(texture.height),sampler=Number(texture.sampler??0),format=Number(texture.format??-1),samplerType=Number(texture.samplerType??0);
   if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width>8192||height>8192)throw Error(`texture ${index} dimensions are invalid`);
   if(!Number.isInteger(sampler)||sampler<0||sampler>31)throw Error(`texture ${index} sampler is invalid`);
   if(!Number.isInteger(format)||format<0||format>63)throw Error(`texture ${index} format is invalid`);
+  if(!Number.isInteger(samplerType)||samplerType<0||samplerType>64)throw Error(`texture ${index} samplerType is invalid`);
   const id=typeof texture.id==='string'&&/^[A-Za-z0-9_.-]+$/.test(texture.id)?texture.id:`mwtex_${index}`;
-  return {id,materialKey:typeof texture.materialKey==='string'?texture.materialKey:null,sampler,address:Number(texture.address||0),format,width,height,swizzle:Number(texture.swizzle||0),endian:Number(texture.endian||0),tiled:Boolean(texture.tiled),dataFile:typeof texture.dataFile==='string'?texture.dataFile:null,texture:typeof texture.texture==='string'?texture.texture:null};
+  const samplerName=typeof texture.samplerName==='string'?texture.samplerName:'';
+  const normalized={id,materialKey:typeof texture.materialKey==='string'?texture.materialKey:null,sampler,samplerType,samplerName,address:Number(texture.address||0),format,width,height,swizzle:Number(texture.swizzle||0),endian:Number(texture.endian||0),tiled:Boolean(texture.tiled),hasPixels:texture.hasPixels!==false&&Boolean(texture.dataFile||texture.texture),dataFile:typeof texture.dataFile==='string'?texture.dataFile:null,texture:typeof texture.texture==='string'?texture.texture:null,stats:texture.stats&&typeof texture.stats==='object'?texture.stats:null};
+  normalized.role=typeof texture.role==='string'&&texture.role?texture.role:classifySamplerRole(normalized);
+  return normalized;
 }
 export function parseRawDrawStream(input){
   const doc=typeof input==='string'?JSON.parse(input):input;
@@ -103,7 +109,20 @@ function addDrawToBucket(bucket,d){
 }
 function stripPrivate(b){delete b._map;if(!b.normals.length)delete b.normals;if(!b.uvs.length)delete b.uvs;if(!b.texture)delete b.texture;if(!b.color)delete b.color;if(!b.materialKey)delete b.materialKey;return b;}
 function materialColor(id){let h=2166136261;for(const c of id){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}return [.38+((h>>>0)&255)/255*.42,.38+((h>>>8)&255)/255*.42,.38+((h>>>16)&255)/255*.42].map(v=>q(v,1000));}
-function materialTable(doc,draws){const map=new Map();for(const m of doc.materials||[])if(m?.id)map.set(m.id,{...m});for(const d of draws){if(!map.has(d.material))map.set(d.material,{id:d.material,color:d.color||materialColor(d.material),...(d.texture?{texture:d.texture}:{}),...(d.materialKey?{materialKey:d.materialKey}:{})});else if(d.texture&&!map.get(d.material).texture)map.get(d.material).texture=d.texture;}return [...map.values()];}
+function materialTable(doc,draws){
+  const map=new Map();for(const m of doc.materials||[])if(m?.id)map.set(m.id,{...m});
+  const textureByKey=new Map();for(const t of doc.textures||[]){if(!t.materialKey)continue;if(!textureByKey.has(t.materialKey))textureByKey.set(t.materialKey,[]);textureByKey.get(t.materialKey).push(t);}
+  const drawRole=new Map();for(const d of draws){if(!drawRole.has(d.material)||d.role==='body')drawRole.set(d.material,d.role==='wheel'?'wheel':'body');if(!map.has(d.material))map.set(d.material,{id:d.material,color:d.color||materialColor(d.material),...(d.texture?{texture:d.texture}:{}),...(d.materialKey?{materialKey:d.materialKey}:{})});else if(d.texture&&!map.get(d.material).texture)map.get(d.material).texture=d.texture;}
+  for(const material of map.values()){
+    const textures=material.materialKey?textureByKey.get(material.materialKey)||[]:[];
+    if(!textures.length)continue;
+    const surface=inferMaterialSurface(textures,drawRole.get(material.id)||'body'),maps=buildMaterialMaps(textures),params=materialParameters(surface,textures);
+    material.surface=surface;material.maps=maps;material.params=params;
+    material.samplers=textures.map(t=>({id:t.id,sampler:t.sampler,samplerType:t.samplerType,samplerName:t.samplerName,role:t.role,address:t.address,format:t.format,width:t.width,height:t.height,tiled:t.tiled,...(t.texture?{texture:t.texture}:{}),...(t.stats?{stats:t.stats}:{})}));
+    if(maps.albedo)material.texture=maps.albedo;else if(!material.texture){const first=Object.values(maps)[0];if(first)material.texture=first;}
+  }
+  return [...map.values()];
+}
 
 export function buildNativeCapture(raw,{frame=null,tag=null,shader=null,object=null,minTriangles=1,autoCar=false}={}){
   let doc=autoCar?autoIsolateCarDraws(raw):parseRawDrawStream(raw),draws=doc.draws;
@@ -114,22 +133,26 @@ export function buildNativeCapture(raw,{frame=null,tag=null,shader=null,object=n
   draws=draws.filter(d=>d.role!=='scene'&&d.indices.length/3>=Number(minTriangles||1));
   if(!draws.length)throw Error('no draw calls matched the capture filters');
   const buckets={body:new Map(),wheel:new Map()};
-  for(const d of draws){const role=d.role==='wheel'?'wheel':'body',key=`${d.material}|${d.texture||''}|${d.color?.join(',')||''}`;let b=buckets[role].get(key);if(!b){b={material:d.material,materialKey:d.materialKey,texture:d.texture,color:d.color,positions:[],normals:[],uvs:[],indices:[]};buckets[role].set(key,b);}addDrawToBucket(b,d);}
+  for(const d of draws){const role=d.role==='wheel'?'wheel':'body',key=`${d.material}|${d.materialKey||''}|${d.texture||''}|${d.color?.join(',')||''}`;let b=buckets[role].get(key);if(!b){b={material:d.material,materialKey:d.materialKey,texture:d.texture,color:d.color,positions:[],normals:[],uvs:[],indices:[]};buckets[role].set(key,b);}addDrawToBucket(b,d);}
   const body=[...buckets.body.values()].map(stripPrivate);if(!body.length)throw Error('capture has no body geometry');
   const wheelMeshes=[...buckets.wheel.values()].map(stripPrivate),triangleCount=draws.reduce((n,d)=>n+d.indices.length/3,0);
-  const textures=doc.textures.filter(t=>t.texture).map(t=>({id:t.id,materialKey:t.materialKey,sampler:t.sampler,address:t.address,format:t.format,width:t.width,height:t.height,swizzle:t.swizzle,endian:t.endian,tiled:t.tiled,texture:t.texture}));
+  const textures=doc.textures.map(t=>({id:t.id,materialKey:t.materialKey,sampler:t.sampler,samplerType:t.samplerType,samplerName:t.samplerName,role:t.role,address:t.address,format:t.format,width:t.width,height:t.height,swizzle:t.swizzle,endian:t.endian,tiled:t.tiled,hasPixels:Boolean(t.texture),...(t.texture?{texture:t.texture}:{}),...(t.stats?{stats:t.stats}:{})}));
+  const hasPhase7=doc.metadata?.phase==='models-phase7-full-materials'||textures.some(t=>t.samplerName||t.samplerType===14||t.role&&t.role!=='albedo'&&t.role!=='detail');
+  const phase=hasPhase7?'models-phase7-full-materials':textures.some(t=>t.texture)?'models-phase6-textures':'models-phase5-materials';
+  const pixelTextures=textures.filter(t=>t.texture).length;
   return {
     format:OUT_FORMAT,version:OUT_VERSION,source:doc.source,axes:doc.axes,materials:materialTable(doc,draws),body,
     ...(wheelMeshes.length?{wheel:{meshes:wheelMeshes}}:{}),...(textures.length?{textures}:{}),
-    metadata:{...doc.metadata,phase:doc.textures.length?'models-phase6-textures':'models-phase5-materials',selectedDraws:draws.length,triangles:triangleCount,uvDraws:draws.filter(d=>d.uvs).length,normalDraws:draws.filter(d=>d.normals).length,textures:textures.length,frames:[...new Set(draws.map(d=>d.frame))].sort((a,b)=>a-b)}
+    metadata:{...doc.metadata,phase,selectedDraws:draws.length,triangles:triangleCount,uvDraws:draws.filter(d=>d.uvs).length,normalDraws:draws.filter(d=>d.normals).length,textures:pixelTextures,samplerBindings:textures.length,frames:[...new Set(draws.map(d=>d.frame))].sort((a,b)=>a-b)}
   };
 }
 
 export function summarizeRawDrawStream(raw){
-  const doc=parseRawDrawStream(raw),frames=new Map(),roles={auto:0,body:0,wheel:0,scene:0},materials=new Map(),shaders=new Map(),objects=new Map();let triangles=0,uvDraws=0,normalDraws=0;
+  const doc=parseRawDrawStream(raw),frames=new Map(),roles={auto:0,body:0,wheel:0,scene:0},materials=new Map(),shaders=new Map(),objects=new Map(),samplerRoles=new Map(),samplerNames=new Map();let triangles=0,uvDraws=0,normalDraws=0;
   for(const d of doc.draws){const t=d.indices.length/3;triangles+=t;roles[d.role]++;if(d.uvs)uvDraws++;if(d.normals)normalDraws++;frames.set(d.frame,(frames.get(d.frame)||0)+t);materials.set(d.material,(materials.get(d.material)||0)+t);if(d.shader!=null)shaders.set(String(d.shader),(shaders.get(String(d.shader))||0)+t);objects.set(String(d.object),(objects.get(String(d.object))||0)+t);}
+  for(const t of doc.textures){samplerRoles.set(t.role,(samplerRoles.get(t.role)||0)+1);const name=t.samplerName||`s${t.sampler}`;samplerNames.set(name,(samplerNames.get(name)||0)+1);}
   const top=m=>[...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([id,count])=>({id,count}));
-  return {draws:doc.draws.length,triangles,uvDraws,normalDraws,textures:doc.textures.length,roles,frames:top(frames),materials:top(materials),shaders:top(shaders),objects:top(objects),source:doc.source,axes:doc.axes};
+  return {draws:doc.draws.length,triangles,uvDraws,normalDraws,textures:doc.textures.filter(t=>t.texture||t.dataFile).length,samplerBindings:doc.textures.length,samplerRoles:top(samplerRoles),samplerNames:top(samplerNames),roles,frames:top(frames),materials:top(materials),shaders:top(shaders),objects:top(objects),source:doc.source,axes:doc.axes};
 }
 
 export const MW_DRAW_STREAM_FORMAT=RAW_FORMAT;
