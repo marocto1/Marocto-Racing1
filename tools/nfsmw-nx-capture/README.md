@@ -1,23 +1,22 @@
-# Marocto Racing — MW2005 Models Phase 4 capture kit
+# Marocto Racing — MW2005 Models Phase 5 capture kit
 
-This folder contains a **development-only capture bridge** for the public `StevensND/nfsmw-nx` port. It does **not** contain EA game assets and cannot produce a car model by itself. The hook only exports geometry that a legally owned copy of Need for Speed: Most Wanted (2005), Xbox 360 edition, causes the renderer to draw.
+Development-only capture bridge for the public `StevensND/nfsmw-nx` port. It contains no EA game assets. Actual car geometry/material metadata only appears when the patched renderer is run with the user's own compatible MW2005 Xbox 360 game files.
 
-## What Phase 4 captures
+## What Phase 5 captures
 
-The current Phase 4 hook is intentionally conservative:
+Phase 5 keeps the one-frame trigger from Phase 4 and adds the data needed for a useful car model:
 
-- it runs after `nfsmw-nx` has decoded the Xenos index buffer and vertex fetch addresses;
-- it captures triangle-list geometry only;
-- it exports **position + triangle indices**;
-- it records the VS/PS numbers, source vertex-buffer address and frame number for later filtering;
-- normals and UVs are not exported yet — Marocto Racing can generate face normals, and UV/material reconstruction is planned for the next model phase;
-- only one triggered frame is captured, so normal play is not constantly dumping data.
+- triangle-list positions and indices after nfsmw-nx has already decoded Xenos fetches/endian/index ranges;
+- vertex normals when the original declaration exposes NORMAL0;
+- TEXCOORD0 UVs from the exact nfsmw-nx/XenosRecomp semantic location 4;
+- common float32, float16, SNORM16 and UNORM16 attribute formats;
+- stable material identity from VS/PS plus the pixel-sampler fetch state;
+- original source vertex-buffer address as `object`, used by automatic isolation;
+- one triggered frame only, so normal play is not continuously dumped.
 
-The output is already the raw format understood by Marocto Racing Models Phase 3:
+Texture **pixels are not copied yet**. Material boundaries and UVs are preserved now; a later texture-export phase can attach real texture images without rebuilding the mesh.
 
-`marocto-mw-draw-stream` v1 → `scripts/mw-draw-capture-build.mjs` → `capture.json`.
-
-## Install into an nfsmw-nx checkout
+## Install into nfsmw-nx
 
 From PowerShell:
 
@@ -25,60 +24,68 @@ From PowerShell:
 powershell -ExecutionPolicy Bypass -File .\apply_to_nfsmw_nx.ps1 -NfsmwNxRoot "D:\nfsmw-nx"
 ```
 
-The installer is guarded by exact anchors. It:
+The installer is anchor-guarded. It copies the bridge, adds it to `app/CMakeLists.txt`, includes it from `nfsmw_nativo_dibujos.cpp`, and inserts capture after nfsmw-nx resolves vertex sources and indices. It can replace the older Marocto Phase 4 capture block in an already patched checkout.
 
-1. copies `nfsmw_marocto_capture.h/.cpp` into `app/src`;
-2. adds `src/nfsmw_marocto_capture.cpp` to `app/CMakeLists.txt`;
-3. includes the bridge from `nfsmw_nativo_dibujos.cpp`;
-4. inserts the capture block immediately after nfsmw-nx resolves the draw's vertex sources and indices.
+## Capture the car
 
-If the upstream source changes and an expected anchor is missing, the installer stops instead of guessing.
-
-## Capture a car
-
-1. Build and run the patched **PC** version of `nfsmw-nx` normally with your own compatible game files.
-2. Enter a garage / car-selection view and leave the desired car on screen. Start with the BMW M3 GTR.
+1. Build and run the patched **PC** nfsmw-nx with your compatible game files.
+2. Open a clean garage/car-selection view and leave the desired car visible. Start with the BMW M3 GTR.
 3. Run:
 
 ```cmd
 CAPTURE_MW_CAR.cmd "D:\path\to\folder\containing\nfsmw.exe"
 ```
 
-4. Keep the game rendering for another frame.
+4. Leave the game rendering for at least one more frame.
 5. The hook writes:
 
 ```text
 <exe folder>\marocto_capture\raw-draws.json
 ```
 
-## Convert the captured frame for Marocto Racing
-
-From the Marocto Racing checkout:
+## Inspect the frame
 
 ```powershell
-node scripts\mw-draw-capture-build.mjs `
-  "D:\path\to\nfsmw\marocto_capture\raw-draws.json" `
-  "D:\Marocto-Racing-Data\Models\mw2005\bmwm3gtr\capture.json"
+node mw-draw-capture-build.mjs "D:\nfsmw\marocto_capture\raw-draws.json" --summary
 ```
 
-To inspect what was captured before building:
+The Phase 5 summary includes draw count, triangle count, UV/normal coverage, top materials, shaders and source `object` groups.
+
+## Automatic car isolation
+
+Try the automatic path first:
 
 ```powershell
-node scripts\mw-draw-capture-build.mjs "...\raw-draws.json" --summary
+node mw-draw-capture-build.mjs `
+  "D:\nfsmw\marocto_capture\raw-draws.json" `
+  "D:\Marocto-Racing-Data\Models\mw2005\bmwm3gtr\capture.json" `
+  --auto-car
 ```
 
-You can then filter by a discovered shader/tag if the frame also contains garage scenery:
+Phase 5 groups draws by their source vertex-buffer/object identity and scores their dimensions/triangle counts. Repeated compact geometry is treated as a wheel candidate; large garage/scenery meshes are rejected; car-like body groups are retained. The decision is recorded in `metadata.autoIsolation` inside `capture.json`.
+
+This is intentionally conservative and cannot be guaranteed for every MW garage scene before it is tested against real game files.
+
+## Manual fallback
+
+If automatic isolation chooses the wrong object, inspect `--summary` and filter directly:
 
 ```powershell
-node scripts\mw-draw-capture-build.mjs "...\raw-draws.json" "...\capture.json" --shader "vs123_ps456"
+node mw-draw-capture-build.mjs "...\raw-draws.json" "...\capture.json" --object 12345678
 ```
 
-The Marocto Racing PC build loads `capture.json` automatically on the next launch.
+or by shader/tag:
 
-## Why the hook is inserted here
+```powershell
+node mw-draw-capture-build.mjs "...\raw-draws.json" "...\capture.json" --shader "vs123_ps456"
+```
 
-`nfsmw-nx` already does the hard Xbox 360 work before this point: it resolves vertex fetch constants, byte order, index width, restart/offset handling and guest-memory ranges. The capture bridge reuses that decoded state rather than implementing a second Xenos parser. This keeps the capture path small and reduces the chance of exporting corrupt geometry.
+Marocto Racing loads the resulting `capture.json` automatically on its next launch.
 
-## Current limitation
+## Material behavior before texture export
 
-Until this patch is run against a real compatible MW2005 game image, we can test the capture bridge and the Marocto conversion pipeline, but we cannot truthfully claim that the resulting public Marocto build already contains the original BMW M3 GTR mesh. The actual EA geometry remains outside this repository.
+Each distinct sampler/shader state gets a stable `mwmat_...` material ID. Until actual texture images are exported, the Phase 5 assembler gives these materials deterministic fallback colors so paint/glass/tire/light sections remain visually separate instead of becoming one grey mesh.
+
+## Validation
+
+The release CI compiles the C++23 capture bridge, makes it generate a real test `raw-draws.json` containing normals/UV/material identity, feeds that through the same Node assembler used for MW captures, runs the automatic isolation regressions, validates the PowerShell patch installer on Windows, runs the full racing regression suite, and only then builds the PC `.exe` and capture-kit ZIP.
