@@ -1,0 +1,206 @@
+name: Build MW2005 Models Phase 8
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mw2005-models-phase8-cubemaps]
+
+permissions:
+  contents: write
+
+jobs:
+  cubemap-capture-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Phase 8 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compile C++23 capture bridge
+        run: |
+          g++ -std=c++23 -Wall -Wextra -Werror -pedantic \
+            tools/nfsmw-nx-capture/nfsmw_marocto_capture.cpp \
+            tools/nfsmw-nx-capture/selftest.cpp \
+            -o /tmp/marocto-mw-capture-selftest
+
+      - name: Generate 2D and six-face cube stream
+        run: |
+          mkdir -p /tmp/marocto-phase8
+          /tmp/marocto-mw-capture-selftest /tmp/marocto-phase8
+          RAW=/tmp/marocto-phase8/marocto_capture/raw-draws.json
+          test -s "$RAW"
+          test -s /tmp/marocto-phase8/marocto_capture/textures/mwtex_123456789abcdef0_s0_a00123000.rgba
+          for face in px nx py ny pz nz; do
+            test -s "/tmp/marocto-phase8/marocto_capture/textures/mwtex_123456789abcdef0_s3_f${face}_a$(case $face in px) echo 00500000;; nx) echo 00501000;; py) echo 00502000;; ny) echo 00503000;; pz) echo 00504000;; nz) echo 00505000;; esac).rgba"
+          done
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('/tmp/marocto-phase8/marocto_capture/raw-draws.json'));
+          const faces=r.textures.filter(t=>Number.isInteger(t.cubeFace)).sort((a,b)=>a.cubeFace-b.cubeFace);
+          if(r.metadata.phase!=='models-phase8-cubemaps'||r.metadata.cubeFaces!==6||faces.length!==6)process.exit(2);
+          if(faces.map(x=>x.cubeFaceName).join(',')!=='px,nx,py,ny,pz,nz'||faces.some(x=>!x.hasPixels||!x.dataFile||x.samplerType!==14))process.exit(3);
+          NODE
+
+      - name: Build Phase 8 material graph and seven PNGs
+        run: |
+          mkdir -p /tmp/marocto-phase8/ready
+          node scripts/mw-draw-capture-build.mjs \
+            /tmp/marocto-phase8/marocto_capture/raw-draws.json \
+            /tmp/marocto-phase8/ready/capture.json \
+            --auto-car
+          test -s /tmp/marocto-phase8/ready/textures/mwtex_123456789abcdef0_s0_a00123000.png
+          for face in px nx py ny pz nz; do
+            test -n "$(find /tmp/marocto-phase8/ready/textures -name "*_f${face}_*.png" -print -quit)"
+          done
+          node - <<'NODE'
+          const fs=require('fs');
+          const c=JSON.parse(fs.readFileSync('/tmp/marocto-phase8/ready/capture.json'));
+          const m=c.materials[0],cube=m?.maps?.environmentCube;
+          if(c.metadata.phase!=='models-phase8-cubemaps'||c.metadata.cubeFaces!==6||!Array.isArray(cube)||cube.length!==6||cube.some(x=>typeof x!=='string'))process.exit(2);
+          if(!m.texture||!m.maps.albedo)process.exit(3);
+          NODE
+
+  windows-mw2005-models-phase8:
+    needs: cubemap-capture-check
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Phase 8 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check game modules and Phase 8 tools
+        run: |
+          npm run check
+          node --check scripts/mw-draw-capture-lib.mjs
+          node --check scripts/mw-draw-capture-build.mjs
+          node --check scripts/mw-texture-png.mjs
+          node --check scripts/mw-material-classifier.mjs
+          node --check www/engine.js
+          node --check www/mw-native-capture.js
+          node --check www/imported-car-models.js
+
+      - name: Exercise Phase 8 PowerShell patch installer
+        shell: pwsh
+        run: |
+          $mock = Join-Path $env:RUNNER_TEMP "nfsmw-nx-mock"
+          New-Item -ItemType Directory -Force (Join-Path $mock "app/src") | Out-Null
+          @'
+          set(NFSMW_SOURCES
+              src/nfsmw_nativo_dibujos.cpp
+          )
+          '@ | Set-Content (Join-Path $mock "app/CMakeLists.txt") -Encoding UTF8
+          @'
+          #include "nfsmw_nativo_dibujos.h"
+          void FakeDraw() {
+              // Diagnostic: one line per combination of VS, PS and render target (at most 32).
+          }
+          '@ | Set-Content (Join-Path $mock "app/src/nfsmw_nativo_dibujos.cpp") -Encoding UTF8
+          @'
+          #pragma once
+          #include <span>
+          #include <vector>
+          struct SamplerShader {
+            uint16_t registro = 0;
+            uint16_t tipo = 0;  // D3DXPARAMETER_TYPE: 10-12 = 2D, 13 = 3D, 14 = cubo
+            bool mapa_sombras = false;
+          };
+          '@ | Set-Content (Join-Path $mock "app/src/nfsmw_nativo_shaders.h") -Encoding UTF8
+          @'
+          void FakeSamplerParse() {
+            SamplerShader sampler;
+            const uint32_t tipo = 0;
+            sampler.tipo = c.Hay(base + tipo, 4) ? c.U16(base + tipo + 2) : 0;
+          }
+          '@ | Set-Content (Join-Path $mock "app/src/nfsmw_nativo_shaders.cpp") -Encoding UTF8
+          & ./tools/nfsmw-nx-capture/apply_phase8_cubemaps_to_nfsmw_nx.ps1 -NfsmwNxRoot $mock
+          $cmake = Get-Content (Join-Path $mock "app/CMakeLists.txt") -Raw
+          $draws = Get-Content (Join-Path $mock "app/src/nfsmw_nativo_dibujos.cpp") -Raw
+          $shaderH = Get-Content (Join-Path $mock "app/src/nfsmw_nativo_shaders.h") -Raw
+          $shaderCpp = Get-Content (Join-Path $mock "app/src/nfsmw_nativo_shaders.cpp") -Raw
+          if ($cmake -notmatch 'nfsmw_marocto_capture.cpp') { throw "Capture source was not added to CMake" }
+          if ($draws -notmatch 'MAROCTO_MW_CAPTURE_PHASE7') { throw "Phase 7 base block missing" }
+          if ($draws -notmatch 'MAROCTO_MW_CAPTURE_PHASE8_CUBEMAPS') { throw "Phase 8 cubemap block missing" }
+          if ($draws -notmatch 'GetGuestTextureLayout') { throw "ReX/Xenia guest cubemap layout missing" }
+          if ($draws -notmatch 'array_slice_stride_bytes') { throw "Cube face stride is not sourced from guest layout" }
+          if ($draws -notmatch 'cube_face=face') { throw "Cube face identity is not forwarded" }
+          if ($draws -notmatch 'DataDimension::kCube') { throw "Cube dimension is not explicit" }
+          if ($shaderH -notmatch 'std::string nombre') { throw "Sampler name field missing" }
+          if ($shaderCpp -notmatch 'sampler.nombre.assign') { throw "Constant-table sampler name parser missing" }
+
+      - name: Run all regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 8 EXE and capture kit
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase8-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+          $kit = "dist/MW2005-Capture-Kit-Phase8"
+          New-Item -ItemType Directory -Force $kit | Out-Null
+          Copy-Item "tools/nfsmw-nx-capture/*" $kit -Recurse -Force
+          Copy-Item "scripts/mw-draw-capture-lib.mjs" $kit -Force
+          Copy-Item "scripts/mw-draw-capture-build.mjs" $kit -Force
+          Copy-Item "scripts/mw-texture-png.mjs" $kit -Force
+          Copy-Item "scripts/mw-material-classifier.mjs" $kit -Force
+          Copy-Item "scripts/mw-capture-to-obj.mjs" $kit -Force
+          Compress-Archive -Path "$kit/*" -DestinationPath "dist/Marocto-Racing-MW2005-Capture-Kit-Phase8.zip" -Force
+          if ((Get-Item "dist/Marocto-Racing-MW2005-Capture-Kit-Phase8.zip").Length -lt 10000) { throw "Capture kit ZIP is unexpectedly small" }
+
+      - name: Upload Phase 8 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Models-Phase8
+          path: |
+            dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase8-x64.exe
+            dist/Marocto-Racing-MW2005-Capture-Kit-Phase8.zip
+          retention-days: 30
+
+      - name: Publish Phase 8 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-models-phase8
+          target_commitish: mw2005-models-phase8-cubemaps
+          name: Marocto Racing v1.4.0 - MW2005 Real Cubemap Reflections Phase 8
+          prerelease: true
+          body: |
+            Separate experimental PC build. Stable main and Models Phases 1-7 remain unchanged.
+
+            Models Phase 8 extends the user-side nfsmw-nx capture pipeline with real six-face MW2005 environment reflections:
+            - six Xenos/D3D cubemap faces captured in +X,-X,+Y,-Y,+Z,-Z order
+            - face stride sourced from ReX/Xenia GetGuestTextureLayout instead of guessed offsets
+            - Xenos tiled/linear addressing, endian transform, swizzle and RGBA/DXT decoding retained per face
+            - six cubemap RGBA sidecars converted to PNG
+            - environmentCube material map emitted only when all six faces exist
+            - explicit six-face WebGL2 reflection sampling, avoiding implicit API face-orientation assumptions
+            - roughness-driven reflection LOD using generated face mipmaps
+            - clamp-to-edge face textures and Phase 7 procedural/2D fallback for incomplete captures
+            - all Phase 7 material maps, glass, normal maps, emissive maps and legacy capture compatibility retained
+
+            No proprietary EA assets are bundled. Geometry and texture/cubemap pixels are generated only by the user's local capture against their own compatible game files.
+          files: |
+            dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase8-x64.exe
+            dist/Marocto-Racing-MW2005-Capture-Kit-Phase8.zip
+          overwrite_files: true
