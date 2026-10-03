@@ -1,0 +1,147 @@
+name: Build MW2005 Models Phase 4
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mw2005-models-phase4-nfsmw-hook]
+
+permissions:
+  contents: write
+
+jobs:
+  capture-toolkit-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Phase 4 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compile C++23 capture bridge
+        run: |
+          g++ -std=c++23 -Wall -Wextra -Werror -pedantic \
+            tools/nfsmw-nx-capture/nfsmw_marocto_capture.cpp \
+            tools/nfsmw-nx-capture/selftest.cpp \
+            -o /tmp/marocto-mw-capture-selftest
+
+      - name: Generate raw draw stream from C++ bridge
+        run: |
+          mkdir -p /tmp/marocto-phase4
+          /tmp/marocto-mw-capture-selftest /tmp/marocto-phase4
+          test -s /tmp/marocto-phase4/marocto_capture/raw-draws.json
+
+      - name: Feed C++ output through Phase 3 assembler
+        run: |
+          node scripts/mw-draw-capture-build.mjs \
+            /tmp/marocto-phase4/marocto_capture/raw-draws.json \
+            /tmp/marocto-phase4/capture.json
+          node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('/tmp/marocto-phase4/capture.json'));if(c.format!=='marocto-mw-native-capture'||c.metadata.triangles!==1||c.body.length!==1)process.exit(2);"
+
+  windows-mw2005-models-phase4:
+    needs: capture-toolkit-check
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Phase 4 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check game modules
+        run: npm run check
+
+      - name: Parse and exercise PowerShell patch installer
+        shell: pwsh
+        run: |
+          $mock = Join-Path $env:RUNNER_TEMP "nfsmw-nx-mock"
+          New-Item -ItemType Directory -Force (Join-Path $mock "app/src") | Out-Null
+          @'
+          set(NFSMW_SOURCES
+              src/nfsmw_nativo_dibujos.cpp
+          )
+          '@ | Set-Content (Join-Path $mock "app/CMakeLists.txt") -Encoding UTF8
+          @'
+          #include "nfsmw_nativo_dibujos.h"
+          void FakeDraw() {
+              // Diagnostic: one line per combination of VS, PS and render target (at most 32).
+          }
+          '@ | Set-Content (Join-Path $mock "app/src/nfsmw_nativo_dibujos.cpp") -Encoding UTF8
+          & ./tools/nfsmw-nx-capture/apply_to_nfsmw_nx.ps1 -NfsmwNxRoot $mock
+          $cmake = Get-Content (Join-Path $mock "app/CMakeLists.txt") -Raw
+          $draws = Get-Content (Join-Path $mock "app/src/nfsmw_nativo_dibujos.cpp") -Raw
+          if ($cmake -notmatch 'nfsmw_marocto_capture.cpp') { throw "Capture source was not added to CMake" }
+          if ($draws -notmatch 'MAROCTO_MW_CAPTURE_PHASE4') { throw "Capture block was not inserted" }
+          if ($draws -notmatch '#include "nfsmw_marocto_capture.h"') { throw "Capture include was not inserted" }
+          if (!(Test-Path (Join-Path $mock "app/src/nfsmw_marocto_capture.cpp"))) { throw "Capture source was not copied" }
+
+      - name: Run all regression tests
+        run: npm test
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Phase 4 EXE and capture kit
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase4-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+          $kit = "dist/MW2005-Capture-Kit-Phase4"
+          New-Item -ItemType Directory -Force $kit | Out-Null
+          Copy-Item "tools/nfsmw-nx-capture/*" $kit -Recurse -Force
+          Copy-Item "scripts/mw-draw-capture-lib.mjs" $kit -Force
+          Copy-Item "scripts/mw-draw-capture-build.mjs" $kit -Force
+          Copy-Item "scripts/mw-capture-to-obj.mjs" $kit -Force
+          Compress-Archive -Path "$kit/*" -DestinationPath "dist/Marocto-Racing-MW2005-Capture-Kit-Phase4.zip" -Force
+          if ((Get-Item "dist/Marocto-Racing-MW2005-Capture-Kit-Phase4.zip").Length -lt 5000) { throw "Capture kit ZIP is unexpectedly small" }
+
+      - name: Upload Phase 4 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-MW2005-Models-Phase4
+          path: |
+            dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase4-x64.exe
+            dist/Marocto-Racing-MW2005-Capture-Kit-Phase4.zip
+          retention-days: 30
+
+      - name: Publish Phase 4 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-mw2005-models-phase4
+          target_commitish: mw2005-models-phase4-nfsmw-hook
+          name: Marocto Racing v1.4.0 - MW2005 nfsmw-nx Capture Hook Phase 4
+          prerelease: true
+          body: |
+            Separate experimental PC build. Stable `main`, Physics Phases 2-7 and Models Phases 1-3 remain unchanged.
+
+            Models Phase 4 adds a tested patch kit for capturing one real rendered frame from a locally built `nfsmw-nx` using a legally owned compatible MW2005 Xbox 360 game image:
+            - C++23 one-frame geometry capture bridge
+            - guarded PowerShell installer for the current nfsmw-nx native renderer
+            - capture trigger file / one-click CMD
+            - triangle-list positions + indices after nfsmw-nx has decoded Xenos fetches and index endian/ranges
+            - VS/PS/object/frame metadata for filtering garage scenery from the car
+            - output directly compatible with the Phase 3 `marocto-mw-draw-stream` assembler
+            - C++ bridge compilation and end-to-end JSON conversion tested in CI
+            - Windows patch-installer syntax/anchor test in CI
+
+            The release contains no proprietary EA assets. Actual BMW/Supra/RX-7/Evo/Porsche geometry only appears after the user runs the capture kit against their own compatible game files.
+          files: |
+            dist/Marocto-Racing-PC-v1.4.0-MW2005-Models-Phase4-x64.exe
+            dist/Marocto-Racing-MW2005-Capture-Kit-Phase4.zip
+          overwrite_files: true
