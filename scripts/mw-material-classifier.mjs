@@ -2,6 +2,7 @@ const upper=v=>String(v||'').toUpperCase();
 const has=(s,...words)=>words.some(w=>s.includes(w));
 const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
 const round=v=>Math.round(v*1000)/1000;
+export const CUBE_FACE_NAMES=['px','nx','py','ny','pz','nz'];
 
 export function classifySamplerRole(texture={}){
   const n=upper(texture.samplerName);
@@ -62,10 +63,18 @@ export function materialParameters(surface,textures=[]){
 }
 
 export function buildMaterialMaps(textures=[]){
-  const maps={};
+  const maps={},cubeSets=new Map();
   const priority={albedo:0,detail:1,normal:2,emissive:3,specular:4,environment:5,mask:6,rubber:7,shadow:8};
   for(const t of [...textures].sort((a,b)=>(priority[a.role]??99)-(priority[b.role]??99)||Number(a.sampler||0)-Number(b.sampler||0))){
-    const role=t.role||classifySamplerRole(t);if(t.texture&&!maps[role])maps[role]=t.texture;
+    const role=t.role||classifySamplerRole(t),face=Number(t.cubeFace);
+    if(role==='environment'&&Number.isInteger(face)&&face>=0&&face<6){
+      if(t.texture){const key=Number(t.sampler||0);if(!cubeSets.has(key))cubeSets.set(key,Array(6).fill(null));const faces=cubeSets.get(key);if(!faces[face])faces[face]=t.texture;}
+      continue;
+    }
+    if(t.texture&&!maps[role])maps[role]=t.texture;
+  }
+  for(const sampler of [...cubeSets.keys()].sort((a,b)=>a-b)){
+    const faces=cubeSets.get(sampler);if(faces.every(Boolean)){maps.environmentCube=faces.slice();break;}
   }
   return maps;
 }
