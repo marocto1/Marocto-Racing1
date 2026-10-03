@@ -42,7 +42,7 @@ std::vector<CapturedDraw> g_draws;
 std::vector<CapturedTexture> g_textures;
 constexpr size_t kMaxDraws = 10000;
 constexpr size_t kMaxVertices = 2'000'000;
-constexpr size_t kMaxTextures = 768;
+constexpr size_t kMaxTextures = 1536;
 constexpr uint64_t kMaxTextureBytes = UINT64_C(256) << 20;
 
 std::string Escape(std::string_view value) {
@@ -84,6 +84,11 @@ std::string Hex64(uint64_t value) {
   return out.str();
 }
 
+const char* CubeFaceName(int32_t face) {
+  static constexpr const char* kNames[6] = {"px", "nx", "py", "ny", "pz", "nz"};
+  return face >= 0 && face < 6 ? kNames[face] : "";
+}
+
 uint64_t TextureBytesLocked() {
   uint64_t total = 0;
   for (const auto& texture : g_textures) total += texture.rgba.size();
@@ -94,7 +99,8 @@ bool SameTextureBinding(const TextureInfo& a, const TextureInfo& b) {
   return a.material_key == b.material_key && a.sampler == b.sampler &&
          a.sampler_type == b.sampler_type && a.address == b.address &&
          a.format == b.format && a.width == b.width && a.height == b.height &&
-         a.swizzle == b.swizzle && a.endian == b.endian && a.tiled == b.tiled;
+         a.swizzle == b.swizzle && a.endian == b.endian && a.tiled == b.tiled &&
+         a.cube_face == b.cube_face;
 }
 
 CapturedTexture* FindTextureLocked(const TextureInfo& info) {
@@ -107,8 +113,9 @@ CapturedTexture* AddTextureLocked(const TextureInfo& info) {
   CapturedTexture captured;
   captured.info = info;
   std::ostringstream id;
-  id << "mwtex_" << Hex64(info.material_key) << "_s" << info.sampler << "_a" << std::hex
-     << std::setfill('0') << std::setw(8) << info.address;
+  id << "mwtex_" << Hex64(info.material_key) << "_s" << info.sampler;
+  if (info.cube_face >= 0 && info.cube_face < 6) id << "_f" << CubeFaceName(info.cube_face);
+  id << "_a" << std::hex << std::setfill('0') << std::setw(8) << info.address;
   captured.id = id.str();
   g_textures.push_back(std::move(captured));
   return &g_textures.back();
@@ -135,12 +142,16 @@ void WriteNowLocked() {
   std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
   if (!out) return;
   out << std::setprecision(9);
+  const auto cube_faces = std::count_if(g_textures.begin(), g_textures.end(), [](const auto& t) {
+    return t.info.cube_face >= 0 && t.info.cube_face < 6 && !t.rgba.empty();
+  });
   out << "{\n  \"format\":\"marocto-mw-draw-stream\",\n  \"version\":1,\n";
   out << "  \"source\":\"nfsmw-nx-x360-native-renderer\",\n";
   out << "  \"axes\":{\"forward\":\"z\",\"up\":\"y\"},\n";
-  out << "  \"metadata\":{\"phase\":\"models-phase7-full-materials\",\"frame\":"
+  out << "  \"metadata\":{\"phase\":\"models-phase8-cubemaps\",\"frame\":"
       << g_capture_frame << ",\"draws\":" << g_draws.size() << ",\"samplerBindings\":" << g_textures.size()
-      << ",\"pixelTextures\":" << std::count_if(g_textures.begin(), g_textures.end(), [](const auto& t) { return !t.rgba.empty(); }) << "},\n";
+      << ",\"pixelTextures\":" << std::count_if(g_textures.begin(), g_textures.end(), [](const auto& t) { return !t.rgba.empty(); })
+      << ",\"cubeFaces\":" << cube_faces << "},\n";
   out << "  \"textures\":[";
   for (size_t i = 0; i < g_textures.size(); ++i) {
     const auto& t = g_textures[i];
@@ -152,6 +163,9 @@ void WriteNowLocked() {
         << ",\"height\":" << t.info.height << ",\"swizzle\":" << t.info.swizzle
         << ",\"endian\":" << t.info.endian << ",\"tiled\":" << (t.info.tiled ? "true" : "false")
         << ",\"hasPixels\":" << (!t.rgba.empty() ? "true" : "false");
+    if (t.info.cube_face >= 0 && t.info.cube_face < 6) {
+      out << ",\"cubeFace\":" << t.info.cube_face << ",\"cubeFaceName\":\"" << CubeFaceName(t.info.cube_face) << "\"";
+    }
     if (!t.rgba.empty()) out << ",\"dataFile\":\"textures/" << Escape(t.id) << ".rgba\"";
     out << '}';
   }
@@ -262,6 +276,7 @@ void SubmitTriangleDraw(const DrawInfo& info,
 void SubmitTextureBinding(const TextureInfo& info) {
   std::lock_guard lock(g_mutex);
   if (g_capture_frame == UINT64_MAX || !info.width || !info.height || info.width > 8192 || info.height > 8192) return;
+  if (info.cube_face < -1 || info.cube_face > 5) return;
   if (CapturedTexture* existing = FindTextureLocked(info)) {
     if (existing->info.sampler_name.empty() && !info.sampler_name.empty()) existing->info.sampler_name = info.sampler_name;
     return;
@@ -272,6 +287,7 @@ void SubmitTextureBinding(const TextureInfo& info) {
 void SubmitTextureRgba(const TextureInfo& info, std::span<const uint8_t> rgba) {
   std::lock_guard lock(g_mutex);
   if (g_capture_frame == UINT64_MAX || !info.width || !info.height || info.width > 8192 || info.height > 8192) return;
+  if (info.cube_face < -1 || info.cube_face > 5) return;
   const uint64_t expected = uint64_t(info.width) * info.height * 4;
   if (expected != rgba.size() || expected > (UINT64_C(128) << 20)) return;
   CapturedTexture* captured = FindTextureLocked(info);
