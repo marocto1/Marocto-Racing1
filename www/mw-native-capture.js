@@ -23,7 +23,9 @@ export function captureMeshToSection(mesh,materials=new Map()){
   const normals=optionalArray(mesh.normals,'normals',3),uvs=optionalArray(mesh.uvs,'uvs',2);
   if(normals&&normals.length/3!==vertexCount)throw Error('normals vertex count does not match positions');
   if(uvs&&uvs.length/2!==vertexCount)throw Error('uv vertex count does not match positions');
-  let indices;if(mesh.indices==null){indices=Array.from({length:vertexCount},(_,i)=>i);}else{indices=mesh.indices.map(Number);if(!indices.length||indices.length%3!==0||indices.some(i=>!Number.isInteger(i)||i<0||i>=vertexCount))throw Error('indices must be valid triangle indices');}
+  let indices;
+  if(mesh.indices==null){if(vertexCount%3!==0)throw Error('unindexed mesh vertex count must be divisible by 3');indices=Array.from({length:vertexCount},(_,i)=>i);}
+  else{indices=mesh.indices.map(Number);if(!indices.length||indices.length%3!==0||indices.some(i=>!Number.isInteger(i)||i<0||i>=vertexCount))throw Error('indices must be valid triangle indices');}
   if(indices.length/3>MAX_VERTICES)throw Error('capture contains too many triangles');
   const materialId=typeof mesh.material==='string'?mesh.material:'default',material=materials.get(materialId)||{};
   const section={material:materialId,positions:[],normals:[],uvs:[],color:color(mesh.color||material.color),texture:typeof mesh.texture==='string'?mesh.texture:(material.texture||null)};
