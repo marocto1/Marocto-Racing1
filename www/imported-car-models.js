@@ -1,5 +1,6 @@
 import {parseNativeCapture} from './mw-native-capture.js';
 const DEFAULT_COLOR=[0.72,0.74,0.78];
+const DEFAULT_PARAMS={roughness:.55,reflectivity:.14,opacity:1,emissive:0,normalStrength:0,detailStrength:.2};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 export const MW_MODEL_MANIFEST=[
@@ -29,7 +30,7 @@ export function parseMTL(text){
 
 export function parseOBJ(text,materials=new Map()){
   const v=[],vn=[],vt=[],sections=new Map();let material='default';
-  const sec=()=>{if(!sections.has(material))sections.set(material,{material,positions:[],normals:[],uvs:[],color:colorOf(materials,material),texture:textureOf(materials,material)});return sections.get(material);};
+  const sec=()=>{if(!sections.has(material)){const texture=textureOf(materials,material);sections.set(material,{material,positions:[],normals:[],uvs:[],color:colorOf(materials,material),texture,maps:texture?{albedo:texture}:{},surface:'detail',params:{...DEFAULT_PARAMS}});}return sections.get(material);};
   const readPos=id=>v[resolveIndex(id.v,v.length)]||[0,0,0];
   const token=s=>{const [a,b,c]=s.split('/');return {v:a,t:b||null,n:c||null};};
   const emit=(a,b,c)=>{
@@ -64,7 +65,14 @@ export function normalizeSections(sections,spec,{forward='z',up='y',wheel=false}
 
 async function fetchText(url){const r=await fetch(new URL(url,import.meta.url));if(!r.ok)throw Error(`${r.status} ${url}`);return r.text();}
 async function maybeText(url){try{return await fetchText(url);}catch{return null;}}
-function resolveTextures(sections,base){for(const s of sections)if(s.texture){try{s.textureURL=new URL(s.texture,base).href;}catch{s.textureURL=null;}}return sections;}
+function resolveTextures(sections,base){
+  for(const s of sections){
+    s.textureURLs={};for(const [role,path] of Object.entries(s.maps||{})){if(typeof path!=='string'||!path)continue;try{s.textureURLs[role]=new URL(path,base).href;}catch{/* ignore malformed capture URL */}}
+    if(s.texture&&!s.textureURLs.albedo){try{s.textureURLs.albedo=new URL(s.texture,base).href;}catch{/* ignore */}}
+    s.textureURL=s.textureURLs.albedo||null;
+  }
+  return sections;
+}
 
 async function loadNativeCapture(spec,entry){
   if(!entry.capture)return null;const text=await maybeText(entry.capture);if(!text)return null;
