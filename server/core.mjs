@@ -94,7 +94,7 @@ export class RoomRegistry{
     const room={
       id:crypto.randomUUID(),name,maxPlayers,mode,track,laps,
       secret:roomSecret(settings.password),hostId:owner.id,started:false,createdAt:Date.now(),
-      players:[{id:owner.id,nickname:owner.nickname,registered:owner.registered,ready:false,joinedAt:Date.now()}]
+      players:[{id:owner.id,nickname:owner.nickname,registered:owner.registered,ready:false,carIndex:0,joinedAt:Date.now()}]
     };
     this.rooms.set(room.id,room);return this.public(room);
   }
@@ -105,7 +105,7 @@ export class RoomRegistry{
     if(r.players.length>=r.maxPlayers)throw Error('ROOM_FULL');
     if(r.players.some(p=>p.id===profile.id))return this.public(r);
     if(r.secret&&!verifySecret(password,r.secret))throw Error('ROOM_PASSWORD');
-    r.players.push({id:profile.id,nickname:profile.nickname,registered:profile.registered,ready:false,joinedAt:Date.now()});
+    r.players.push({id:profile.id,nickname:profile.nickname,registered:profile.registered,ready:false,carIndex:0,joinedAt:Date.now()});
     return this.public(r);
   }
   leave(id,playerId){
@@ -119,6 +119,14 @@ export class RoomRegistry{
     const r=this.get(id);if(!r)throw Error('ROOM_NOT_FOUND');
     const p=r.players.find(x=>x.id===playerId);if(!p)throw Error('NOT_IN_ROOM');
     p.ready=Boolean(ready);return this.public(r);
+  }
+  setCar(id,playerId,carIndex){
+    const r=this.get(id);if(!r)throw Error('ROOM_NOT_FOUND');
+    if(r.started)throw Error('ROOM_STARTED');
+    const p=r.players.find(x=>x.id===playerId);if(!p)throw Error('NOT_IN_ROOM');
+    p.carIndex=Math.max(0,Math.min(5,Math.trunc(Number(carIndex)||0)));
+    p.ready=false;
+    return this.public(r);
   }
   update(id,playerId,patch={}){
     const r=this.get(id);if(!r)throw Error('ROOM_NOT_FOUND');
