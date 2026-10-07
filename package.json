@@ -10,6 +10,7 @@
     "test": "node --test tests/*.test.js",
     "test:browser": "playwright test",
     "dev": "node scripts/serve.mjs",
+    "server:dev": "node server/index.mjs",
     "android:prepare": "node scripts/prepare-android.mjs",
     "pc:dev": "electron .",
     "pc:build": "electron-builder --win portable --x64 --publish never",
@@ -29,7 +30,7 @@
     "electron-builder": "^26.15.3"
   },
   "type": "module",
-  "description": "Marocto Racing PC: WebGL2 single-player racing with AI",
+  "description": "Marocto Racing PC: WebGL2 racing with MW-style physics and online rooms",
   "author": "Marocto",
   "main": "desktop/main.cjs",
   "build": {
