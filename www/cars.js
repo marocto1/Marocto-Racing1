@@ -1,11 +1,11 @@
 import {Geometry} from './geometry.js';
 export const CAR_SPECS=[
-  {name:'Touring GTR · E46 inspired',model:'m3gtr',class:'touring',color:[.16,.42,.85],length:4.55,width:1.84,height:1.39,wheelbase:2.73,mass:1400,power:9200,grip:1.12,drag:.45,roofFront:.55,roofRear:-.92,wing:2,lights:'split'},
-  {name:'Vector R · R34 inspired',model:'r34',class:'coupe',color:[.1,.62,.75],length:4.60,width:1.88,height:1.35,wheelbase:2.66,mass:1510,power:9700,grip:1.08,drag:.46,roofFront:.43,roofRear:-.8,wing:2,lights:'round'},
-  {name:'Apex J · Mk4 inspired',model:'supra',class:'gt',color:[.9,.22,.08],length:4.52,width:1.93,height:1.28,wheelbase:2.55,mass:1480,power:10100,grip:1.01,drag:.43,roofFront:.2,roofRear:-1.13,wing:3,lights:'oval'},
-  {name:'Rotary F · FD inspired',model:'rx7',class:'lightweight',color:[.96,.64,.08],length:4.29,width:1.80,height:1.19,wheelbase:2.45,mass:1220,power:8000,grip:1.05,drag:.40,roofFront:.04,roofRear:-.94,wing:1,lights:'pop'},
-  {name:'Rally IX · Evo inspired',model:'evo8',class:'sedan',color:[.78,.81,.86],length:4.50,width:1.83,height:1.48,wheelbase:2.62,mass:1440,power:8900,grip:1.16,drag:.50,roofFront:.66,roofRear:-.9,wing:2,lights:'split'},
-  {name:'RearSport GT · 911 inspired',model:'911turbo',class:'rearengine',color:[.83,.13,.22],length:4.43,width:1.94,height:1.27,wheelbase:2.46,mass:1380,power:9700,grip:1.20,drag:.39,roofFront:.64,roofRear:-1.32,wing:3,lights:'classic'}
+  {name:'Touring GTR · E46 inspired',displayName:'Track R',model:'m3gtr',class:'touring',color:[.16,.42,.85],length:4.55,width:1.84,height:1.39,wheelbase:2.73,mass:1400,power:9200,grip:1.12,drag:.45,roofFront:.55,roofRear:-.92,wing:2,lights:'split'},
+  {name:'Vector R · R34 inspired',displayName:'Vector F',model:'r34',class:'coupe',color:[.1,.62,.75],length:4.60,width:1.88,height:1.35,wheelbase:2.66,mass:1510,power:9700,grip:1.08,drag:.46,roofFront:.43,roofRear:-.8,wing:2,lights:'round'},
+  {name:'Apex J · Mk4 inspired',displayName:'Apex S',model:'supra',class:'gt',color:[.9,.22,.08],length:4.52,width:1.93,height:1.28,wheelbase:2.55,mass:1480,power:10100,grip:1.01,drag:.43,roofFront:.2,roofRear:-1.13,wing:3,lights:'oval'},
+  {name:'Rotary F · FD inspired',displayName:'Rotary H',model:'rx7',class:'lightweight',color:[.96,.64,.08],length:4.29,width:1.80,height:1.19,wheelbase:2.45,mass:1220,power:8000,grip:1.05,drag:.40,roofFront:.04,roofRear:-.94,wing:1,lights:'pop'},
+  {name:'Rally IX · Evo inspired',displayName:'Rally S',model:'evo8',class:'sedan',color:[.78,.81,.86],length:4.50,width:1.83,height:1.48,wheelbase:2.62,mass:1440,power:8900,grip:1.16,drag:.50,roofFront:.66,roofRear:-.9,wing:2,lights:'split'},
+  {name:'RearSport GT · 911 inspired',displayName:'RearSport X',model:'911turbo',class:'rearengine',color:[.83,.13,.22],length:4.43,width:1.94,height:1.27,wheelbase:2.46,mass:1380,power:9700,grip:1.20,drag:.39,roofFront:.64,roofRear:-1.32,wing:3,lights:'classic'}
 ];
 const DARK=[.035,.045,.055],GLASS=[.09,.20,.26],CHROME=[.65,.72,.78],WHITE=[1,.94,.72],RED=[.93,.025,.035],AMBER=[1,.38,.04],SILVER=[.82,.86,.9];
 function shade(c,v){return c.map(x=>Math.max(0,Math.min(1,x*v)));}
