@@ -43,9 +43,7 @@ export class FileUserStore{
   }
   save(){
     fs.mkdirSync(path.dirname(this.file),{recursive:true});
-    const temp=this.file+'.tmp';
-    fs.writeFileSync(temp,JSON.stringify({version:1,users:[...this.users.values()]},null,2));
-    fs.renameSync(temp,this.file);
+    fs.writeFileSync(this.file,JSON.stringify({version:1,users:[...this.users.values()]},null,2));
   }
   has(username){return this.users.has(key(username));}
   register(username,password){
