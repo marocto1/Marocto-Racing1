@@ -47,6 +47,7 @@ export class OnlineClient{
   joinRoom(roomId,password=''){this.send('room.join',{roomId,password});}
   leaveRoom(){this.send('room.leave');}
   ready(ready){this.send('room.ready',{ready});}
+  setCar(carIndex){this.send('room.car',{carIndex});}
   updateRoom(patch){this.send('room.update',patch);}
   startRace(){this.send('room.start');}
   sendRaceState(state){this.send('race.state',{state});}
