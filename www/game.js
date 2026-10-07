@@ -9,7 +9,7 @@ import {InputManager} from './input.js';
 import {createAIController,AI_LEVELS} from './ai.js';
 import {initUI,strings} from './ui.js';
 import {initOnlineUI} from './online-ui.js';
-export const cars=CAR_SPECS.map(s=>[s.name,0,s.color]);
+export const cars=CAR_SPECS.map(s=>[s.displayName||s.name,0,s.color]);
 const canvas=document.querySelector('#gl'),track=new Track(),input=new InputManager(),ai=createAIController(track);
 const pick=[0,1],cameras=[new ChaseCamera(),new ChaseCamera()],previewCamera=new ChaseCamera(5.8,0,2.8,.85);
 const hud=[document.querySelector('#h0'),document.querySelector('#h1')],countdownEl=document.querySelector('#countdown');
