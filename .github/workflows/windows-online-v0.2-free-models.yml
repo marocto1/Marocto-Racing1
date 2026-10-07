@@ -1,0 +1,78 @@
+name: Build Online v0.2 Free Models
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [online-v0.2-free-models]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-online-v02:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Check modules
+        run: npm run check
+      - name: Run regression + online + CC0 model tests
+        run: npm test
+      - name: Verify bundled Kenney assets
+        shell: pwsh
+        run: |
+          $models = @("track-r","vector-f","apex-s","rotary-h","rally-s","rearsport-x")
+          foreach ($m in $models) {
+            $p = "www/assets/free-cars/$m/body.obj"
+            if (!(Test-Path $p)) { throw "Missing $p" }
+            if ((Get-Item $p).Length -lt 50000) { throw "Unexpectedly small model $p" }
+          }
+          if (!(Select-String -Path "www/assets/free-cars/LICENSE.txt" -Pattern "CC0" -Quiet)) { throw "CC0 license missing" }
+      - name: Smoke online server
+        shell: pwsh
+        run: |
+          node -e "import('./server/index.mjs').then(async m=>{const s=m.start();await new Promise(r=>setTimeout(r,250));const x=await fetch('http://127.0.0.1:8787/health').then(r=>r.json());if(!x.ok)throw Error('health failed');await new Promise(r=>s.close(r));})"
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+      - name: Prepare EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-v0.2-CC0-Cars-x64.exe"
+          Copy-Item $source $target -Force
+          if ((Get-Item $target).Length -lt 50000000) { throw "EXE unexpectedly small" }
+          $hash=(Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "SHA256 $hash"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-Online-v0.2-CC0-Cars
+          path: dist/Marocto-Racing-PC-v1.4.0-Online-v0.2-CC0-Cars-x64.exe
+          retention-days: 30
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-online-v0.2-cc0-cars
+          target_commitish: online-v0.2-free-models
+          name: Marocto Racing v1.4.0 - Online v0.2 CC0 Cars
+          prerelease: true
+          body: |
+            Online lobby v0.1 plus bundled free car models.
+
+            - six Kenney Car Kit CC0 OBJ bodies bundled directly in the game
+            - MW2005-style Phase 7 drivetrain/tires/suspension retained
+            - Kenney wheel meshes are stripped from bodies so physics-aligned Marocto wheels remain authoritative
+            - Guest / Register / Login
+            - unique active nicknames and room names
+            - passworded or public rooms
+            - room size 2-8
+            - MW-style race mode selection
+            - Ready / Start lobby
+            - Free Roam remains planned
+            - stable main unchanged
+          files: dist/Marocto-Racing-PC-v1.4.0-Online-v0.2-CC0-Cars-x64.exe
+          overwrite_files: true
