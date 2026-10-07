@@ -8,7 +8,7 @@ for(let i=0;i<HD_CAR_MANIFEST.length;i++){
   const entry=HD_CAR_MANIFEST[i],file=path.join('www',entry.file);
   if(!fs.existsSync(file))throw Error('Missing HD model: '+file);
   const b=fs.readFileSync(file),ab=b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength);
-  const parsed=parseGLB(ab,{label:entry.id,baseUrl:'https://example.invalid/'+entry.id+'.glb'});
+  const parsed=parseGLB(ab,{label:entry.id,baseUrl:'https://example.invalid/'+entry.id+'.glb',includeNodes:entry.includeNodes||null});
   const normalized=normalizeGLBSections(parsed.sections,CAR_SPECS[i],entry);
   const vertices=normalized.sections.reduce((n,s)=>n+s.positions.length/3,0),triangles=vertices/3;
   if(triangles<8000)throw Error(`HD model ${entry.id} is too simple: ${triangles} triangles`);
