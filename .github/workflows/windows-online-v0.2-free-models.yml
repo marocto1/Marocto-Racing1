@@ -1,15 +1,15 @@
-name: Build Online v1.1 Cars
+name: Build Online v1.2 HD Cars
 
 on:
   workflow_dispatch:
   push:
-    branches: [online-v1-playable]
+    branches: [online-v1.2-hd-cars]
 
 permissions:
   contents: write
 
 jobs:
-  windows-online-v1:
+  windows-online-v12:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -19,13 +19,35 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Download pinned HD car assets
+        shell: pwsh
+        run: |
+          $dir = "www/assets/hd-cars"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $assets = @(
+            @{Name="bmw-m4.glb"; Size=22739084; Url="https://raw.githubusercontent.com/lukaizj/car-mod-saas/2a4cbf3b06769d7dff84bfdd3d1f445ef672be1a/public/models/bmw-m4.glb"},
+            @{Name="tesla-model3.glb"; Size=22671680; Url="https://raw.githubusercontent.com/nesdesignco/FormDrive/e2f861630035385adacd1c5fcdeae5258557cce6/public/models/tesla-model-3-2018.glb"},
+            @{Name="mustang-2005.glb"; Size=7663836; Url="https://raw.githubusercontent.com/nesdesignco/FormDrive/e2f861630035385adacd1c5fcdeae5258557cce6/public/models/mustang-2005.glb"},
+            @{Name="car-concept.glb"; Size=10267996; Url="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/edc7c9e67c639d230715049ee31f9a96a6babbbe/Models/CarConcept/GLB/CarConcept.glb"},
+            @{Name="toy-car.glb"; Size=5422412; Url="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/edc7c9e67c639d230715049ee31f9a96a6babbbe/Models/ToyCar/glTF-Binary/ToyCar.glb"},
+            @{Name="porsche-911.glb"; Size=4748260; Url="https://raw.githubusercontent.com/webtrackerxy/3d-city-million-cars/310e9ec6e8f71cabd04e45eb8761a097f26acb60/assets/generated/porsche/car_lod0.glb"}
+          )
+          foreach ($a in $assets) {
+            $out = Join-Path $dir $a.Name
+            curl.exe -L --fail --retry 3 --retry-delay 2 $a.Url -o $out
+            if ($LASTEXITCODE -ne 0) { throw "Download failed: $($a.Name)" }
+            $actual = (Get-Item $out).Length
+            if ($actual -ne $a.Size) { throw "Bad size for $($a.Name): $actual expected $($a.Size)" }
+          }
       - name: Check modules
         run: npm run check
-      - name: Run regression + online + CC0 model tests
+      - name: Run regression + online + model tests
         run: npm test
+      - name: Verify HD GLBs parse and exceed low-poly budget
+        run: node scripts/verify-hd-models.mjs
       - name: Two-client live race smoke
         run: node scripts/online-live-smoke.mjs
-      - name: Verify bundled Kenney assets
+      - name: Verify fallback Kenney assets
         shell: pwsh
         run: |
           $models = @("track-r","vector-f","apex-s","rotary-h","rally-s","rearsport-x")
@@ -45,25 +67,31 @@ jobs:
         shell: pwsh
         run: |
           $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
-          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-v1.1-Cars-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-v1.2-HD-Cars-x64.exe"
           Copy-Item $source $target -Force
           if ((Get-Item $target).Length -lt 50000000) { throw "EXE unexpectedly small" }
           $hash=(Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
           Write-Host "SHA256 $hash"
       - uses: actions/upload-artifact@v4
         with:
-          name: Marocto-Racing-Online-v1.1-Cars
-          path: dist/Marocto-Racing-PC-v1.4.0-Online-v1.1-Cars-x64.exe
+          name: Marocto-Racing-Online-v1.2-HD-Cars
+          path: dist/Marocto-Racing-PC-v1.4.0-Online-v1.2-HD-Cars-x64.exe
           retention-days: 30
       - name: Publish prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: pc-online-v1.1-cars
-          target_commitish: online-v1-playable
-          name: Marocto Racing v1.4.0 - Online v1.1 Cars
+          tag_name: pc-online-v1.2-hd-cars
+          target_commitish: online-v1.2-hd-cars
+          name: Marocto Racing v1.4.0 - Online v1.2 HD Cars
           prerelease: true
           body: |
-            Playable multiplayer build with visible per-player car selection.
+            Playable multiplayer build with six bundled high-detail GLB vehicles and MW-style physics.
+
+            - HD GLBs are downloaded from pinned upstream commits during CI and bundled into the EXE
+            - BMW M4 Competition, Tesla Model 3, Mustang GT 2005, K15 Concept Coupe, Toy Car GT, Porsche 911 Carrera 4S
+            - licenses: CC BY 4.0 / CC0 with attribution shipped in www/assets/hd-cars/ATTRIBUTION.md
+            - custom dependency-free GLB 2.0 parser in the Marocto WebGL2 engine
+            - CI rejects missing/compressed/unparseable models and any fleet that falls below the HD triangle budget
 
             - six Kenney Car Kit CC0 OBJ bodies bundled directly in the game
             - MW2005-style Phase 7 drivetrain/tires/suspension retained
@@ -82,5 +110,5 @@ jobs:
             - two-client race protocol smoke-tested in CI
             - Free Roam remains planned
             - stable main unchanged
-          files: dist/Marocto-Racing-PC-v1.4.0-Online-v1.1-Cars-x64.exe
+          files: dist/Marocto-Racing-PC-v1.4.0-Online-v1.2-HD-Cars-x64.exe
           overwrite_files: true
