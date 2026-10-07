@@ -27,7 +27,7 @@ jobs:
           $assets = @(
             @{Name="bmw-m4.glb"; Size=22739084; Url="https://raw.githubusercontent.com/lukaizj/car-mod-saas/2a4cbf3b06769d7dff84bfdd3d1f445ef672be1a/public/models/bmw-m4.glb"},
             @{Name="tesla-model3.glb"; Size=22671680; Url="https://raw.githubusercontent.com/nesdesignco/FormDrive/e2f861630035385adacd1c5fcdeae5258557cce6/public/models/tesla-model-3-2018.glb"},
-            @{Name="mustang-2005.glb"; Size=7663836; Url="https://raw.githubusercontent.com/nesdesignco/FormDrive/e2f861630035385adacd1c5fcdeae5258557cce6/public/models/mustang-2005.glb"},
+            @{Name="mustang-2005.draco.glb"; Size=7663836; Url="https://raw.githubusercontent.com/nesdesignco/FormDrive/e2f861630035385adacd1c5fcdeae5258557cce6/public/models/mustang-2005.glb"},
             @{Name="car-concept.glb"; Size=10267996; Url="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/edc7c9e67c639d230715049ee31f9a96a6babbbe/Models/CarConcept/GLB/CarConcept.glb"},
             @{Name="toy-car.glb"; Size=5422412; Url="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/edc7c9e67c639d230715049ee31f9a96a6babbbe/Models/ToyCar/glTF-Binary/ToyCar.glb"},
             @{Name="porsche-911.glb"; Size=4748260; Url="https://raw.githubusercontent.com/webtrackerxy/3d-city-million-cars/310e9ec6e8f71cabd04e45eb8761a097f26acb60/assets/generated/porsche/car_lod0.glb"}
@@ -39,6 +39,10 @@ jobs:
             $actual = (Get-Item $out).Length
             if ($actual -ne $a.Size) { throw "Bad size for $($a.Name): $actual expected $($a.Size)" }
           }
+          npx --yes @gltf-transform/cli@4.5.1 copy "$dir/mustang-2005.draco.glb" "$dir/mustang-2005.glb"
+          if ($LASTEXITCODE -ne 0) { throw "Mustang Draco decode failed" }
+          Remove-Item "$dir/mustang-2005.draco.glb" -Force
+          if ((Get-Item "$dir/mustang-2005.glb").Length -lt 10000000) { throw "Decoded Mustang GLB unexpectedly small" }
       - name: Check modules
         run: npm run check
       - name: Run regression + online + model tests
