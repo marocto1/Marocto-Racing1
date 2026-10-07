@@ -13,7 +13,7 @@ export const HD_CAR_MANIFEST=[
   {id:'tesla-model3',label:'Tesla Model 3',file:'assets/hd-cars/tesla-model3.glb',source:'CC BY 4.0 · Ameer Studio',flipZ:true,fit:.985},
   {id:'mustang-2005',label:'Mustang GT 2005',file:'assets/hd-cars/mustang-2005.glb',source:'CC BY 4.0 · Ricy',fit:.985},
   {id:'car-concept',label:'K15 Concept Coupé',file:'assets/hd-cars/car-concept.glb',source:'CC BY 4.0 · Khronos sample asset',fit:.985},
-  {id:'toy-car',label:'Toy Car GT',file:'assets/hd-cars/toy-car.glb',source:'CC0 · Guido Odendahl / Eric Chadwick',fit:.985},
+  {id:'toy-car',label:'Toy Car GT',file:'assets/hd-cars/toy-car.glb',source:'CC0 · Guido Odendahl / Eric Chadwick',fit:.985,includeNodes:['ToyCar']},
   {id:'porsche-911',label:'Porsche 911 Carrera 4S',file:'assets/hd-cars/porsche-911.glb',source:'CC BY 4.0 · Lionsharp Studios',fit:.985}
 ];
 
@@ -40,7 +40,7 @@ function identity(){return Float64Array.from([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
 function u32(v,o){return v.getUint32(o,true);}
 function decodeText(bytes){return new TextDecoder().decode(bytes).replace(/\0+$/,'').trim();}
 
-export function parseGLB(buffer,{baseUrl='',label='car'}={}){
+export function parseGLB(buffer,{baseUrl='',label='car',includeNodes=null}={}){
   const view=new DataView(buffer);
   if(view.byteLength<20||u32(view,0)!==0x46546c67||u32(view,4)!==2)throw Error(`Invalid GLB: ${label}`);
   let offset=12,json=null,bin=null;
@@ -107,6 +107,7 @@ export function parseGLB(buffer,{baseUrl='',label='car'}={}){
   const sections=[];
   function emitPrimitive(primitive,world,nodeName=''){
     if((primitive.mode??4)!==4||primitive.attributes?.POSITION==null)return;
+    if(Array.isArray(includeNodes)&&includeNodes.length&&!includeNodes.includes(nodeName))return;
     const pos=accessor(primitive.attributes.POSITION),nor=primitive.attributes.NORMAL!=null?accessor(primitive.attributes.NORMAL):null,uv=primitive.attributes.TEXCOORD_0!=null?accessor(primitive.attributes.TEXCOORD_0):null;
     const indices=primitive.indices!=null?accessor(primitive.indices).data:null;
     const count=indices?indices.length:pos.count,positions=[],normals=[],uvs=[];
@@ -156,7 +157,7 @@ export function normalizeGLBSections(sections,spec,entry={}){
 
 export async function loadHDCar(entry,spec){
   const url=new URL(entry.file,location.href).href,r=await fetch(url,{cache:'force-cache'});if(!r.ok)throw Error(`HD model ${r.status}: ${entry.id}`);
-  const parsed=parseGLB(await r.arrayBuffer(),{baseUrl:url,label:entry.id}),normalized=normalizeGLBSections(parsed.sections,spec,entry);
+  const parsed=parseGLB(await r.arrayBuffer(),{baseUrl:url,label:entry.id,includeNodes:entry.includeNodes||null}),normalized=normalizeGLBSections(parsed.sections,spec,entry);
   return {id:entry.id,displayName:entry.label,source:`hd-glb:${entry.source}`,body:normalized.sections,wheel:null,embeddedWheels:true,wheelX:spec.width/2,wheelZ:spec.wheelbase/2,dimensions:normalized.dimensions};
 }
 export async function loadHDCarSet(specs){
