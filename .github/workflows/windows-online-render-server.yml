@@ -1,0 +1,56 @@
+name: Build Online Server Connected
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [online-v2-live-race]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-online-server:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Check modules
+        run: npm run check
+      - name: Run tests
+        run: npm test
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+      - name: Prepare EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-Render-Server-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $($exe.Length) bytes - SHA256 $hash"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-Online-Render-Server
+          path: dist/Marocto-Racing-PC-v1.4.0-Online-Render-Server-x64.exe
+          retention-days: 30
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-online-render-server
+          target_commitish: online-v2-live-race
+          name: Marocto Racing v1.4.0 - Online Render Server
+          prerelease: true
+          body: |
+            Public multiplayer server connected by default.
+            Default endpoint: wss://marocto-racing-online.onrender.com/ws
+            Includes Guest/Register/Login and room lobby from Online v0.1.
+            Stable main remains unchanged.
+          files: dist/Marocto-Racing-PC-v1.4.0-Online-Render-Server-x64.exe
+          overwrite_files: true
