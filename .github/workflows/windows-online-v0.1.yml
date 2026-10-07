@@ -1,15 +1,15 @@
-name: Build Online v0.1 Lobby
+name: Build Online Render Connected
 
 on:
   workflow_dispatch:
   push:
-    branches: [online-v1-lobby-auth-rooms]
+    branches: [online-v2-live-race]
 
 permissions:
   contents: write
 
 jobs:
-  windows-online-v01:
+  windows-online-render:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -43,7 +43,7 @@ jobs:
         shell: pwsh
         run: |
           $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
-          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-v0.1-Lobby-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-Render-Server-x64.exe"
           Copy-Item $source $target -Force
           $exe = Get-Item $target
           if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
@@ -53,19 +53,19 @@ jobs:
       - name: Upload Online v0.1 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Marocto-Racing-Online-v0.1-Lobby
-          path: dist/Marocto-Racing-PC-v1.4.0-Online-v0.1-Lobby-x64.exe
+          name: Marocto-Racing-Online-Render-Server
+          path: dist/Marocto-Racing-PC-v1.4.0-Online-Render-Server-x64.exe
           retention-days: 30
 
       - name: Publish Online v0.1 prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: pc-online-v0.1-lobby
+          tag_name: pc-online-render-server
           target_commitish: online-v1-lobby-auth-rooms
-          name: Marocto Racing v1.4.0 - Online v0.1 Lobby
+          name: Marocto Racing v1.4.0 - Online Render Server
           prerelease: true
           body: |
-            First online milestone on a separate experimental branch.
+            Public multiplayer server connected by default.
 
             Included:
             - Continue as Guest
@@ -81,7 +81,7 @@ jobs:
             - MW-style Phase 7 drivetrain physics retained
             - Free Roam remains planned for a later city/sandbox milestone
 
-            The race-state synchronization layer is the next online milestone.
+            Default endpoint: wss://marocto-racing-online.onrender.com/ws\n            Stable main remains unchanged.
             Stable main remains unchanged.
-          files: dist/Marocto-Racing-PC-v1.4.0-Online-v0.1-Lobby-x64.exe
+          files: dist/Marocto-Racing-PC-v1.4.0-Online-Render-Server-x64.exe
           overwrite_files: true
