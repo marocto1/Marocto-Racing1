@@ -38,6 +38,7 @@ try{
   const created=await a.wait('room.state'),roomId=created.room.id;
   b.send('room.join',{roomId});
   await b.wait('room.state');
+  a.messages=a.messages.filter(m=>m.type!=='room.state');
   a.send('room.car',{carIndex:3});
   const carState=await a.wait('room.state');
   assert.equal(carState.room.players.find(p=>p.id===authA.profile.id).carIndex,3);
