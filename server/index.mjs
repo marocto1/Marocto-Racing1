@@ -98,6 +98,11 @@ function handle(client,msg){
         const room=rooms.setReady(client.roomId,client.profile.id,msg.ready);
         broadcastRoom(room.id);break;
       }
+      case 'room.car':{
+        requireAuth(client);if(!client.roomId)throw Error('NOT_IN_ROOM');
+        const room=rooms.setCar(client.roomId,client.profile.id,msg.carIndex);
+        broadcastRoom(room.id);break;
+      }
       case 'room.update':{
         requireAuth(client);if(!client.roomId)throw Error('NOT_IN_ROOM');
         const room=rooms.update(client.roomId,client.profile.id,msg);
