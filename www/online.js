@@ -1,6 +1,6 @@
 function defaultEndpoint(){
-  try{return window.racingDesktop?.onlineServer||localStorage.getItem('mr-online-server')||'ws://127.0.0.1:8787/ws';}
-  catch{return 'ws://127.0.0.1:8787/ws';}
+  try{return window.racingDesktop?.onlineServer||localStorage.getItem('mr-online-server')||'wss://marocto-racing-online.onrender.com/ws';}
+  catch{return 'wss://marocto-racing-online.onrender.com/ws';}
 }
 export class OnlineClient{
   constructor(endpoint=defaultEndpoint()){this.endpoint=endpoint;this.ws=null;this.profile=null;this.room=null;this.rooms=[];this.latency=null;this.listeners=new Map();this.pingTimer=null;this.pendingPing=new Map();}
