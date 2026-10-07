@@ -1,0 +1,87 @@
+name: Build Online v0.1 Lobby
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [online-v1-lobby-auth-rooms]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-online-v01:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout online branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check modules
+        run: npm run check
+
+      - name: Run all regression and online tests
+        run: npm test
+
+      - name: Smoke online server health
+        shell: pwsh
+        run: |
+          node -e "import('./server/index.mjs').then(async m=>{const s=m.start();await new Promise(r=>setTimeout(r,300));const x=await fetch('http://127.0.0.1:8787/health').then(r=>r.json());if(!x.ok)throw Error('health failed');await new Promise(r=>s.close(r));})"
+
+      - name: Build Windows portable EXE
+        run: npm run pc:build
+
+      - name: Prepare Online v0.1 EXE
+        shell: pwsh
+        run: |
+          $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-v0.1-Lobby-x64.exe"
+          Copy-Item $source $target -Force
+          $exe = Get-Item $target
+          if ($exe.Length -lt 50000000) { throw "EXE is unexpectedly small: $($exe.Length) bytes" }
+          $hash = (Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Verified $($exe.Name) - $([math]::Round($exe.Length / 1MB, 1)) MB - SHA256 $hash"
+
+      - name: Upload Online v0.1 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marocto-Racing-Online-v0.1-Lobby
+          path: dist/Marocto-Racing-PC-v1.4.0-Online-v0.1-Lobby-x64.exe
+          retention-days: 30
+
+      - name: Publish Online v0.1 prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-online-v0.1-lobby
+          target_commitish: online-v1-lobby-auth-rooms
+          name: Marocto Racing v1.4.0 - Online v0.1 Lobby
+          prerelease: true
+          body: |
+            First online milestone on a separate experimental branch.
+
+            Included:
+            - Continue as Guest
+            - Register / Login with scrypt-hashed passwords
+            - globally unique active nicknames
+            - Create Room with mandatory unique room name
+            - optional room password
+            - configurable 2-8 player limit
+            - Find Room search and live room browser
+            - Circuit, Sprint, Drag, Lap Knockout, Speedtrap and Tollbooth room modes
+            - Ready state, host handoff and host-only Start
+            - app-level latency ping
+            - MW-style Phase 7 drivetrain physics retained
+            - Free Roam remains planned for a later city/sandbox milestone
+
+            The race-state synchronization layer is the next online milestone.
+            Stable main remains unchanged.
+          files: dist/Marocto-Racing-PC-v1.4.0-Online-v0.1-Lobby-x64.exe
+          overwrite_files: true
