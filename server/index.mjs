@@ -50,6 +50,24 @@ function claimProfile(client,profile){
   send(client,'room.list',{rooms:rooms.list()});
 }
 function requireAuth(client){if(!client.profile)throw Error('AUTH_REQUIRED');}
+function finite(v,d=0){v=Number(v);return Number.isFinite(v)?v:d;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function sanitizeRaceState(input={}){
+  return {
+    seq:Math.max(0,Math.trunc(finite(input.seq))),
+    x:clamp(finite(input.x),-5000,5000),z:clamp(finite(input.z),-5000,5000),
+    a:clamp(finite(input.a),-Math.PI*8,Math.PI*8),
+    vx:clamp(finite(input.vx),-140,140),vz:clamp(finite(input.vz),-140,140),
+    steerAngle:clamp(finite(input.steerAngle),-1.2,1.2),wheelSpin:clamp(finite(input.wheelSpin),-2500,2500),
+    roll:clamp(finite(input.roll),-.9,.9),pitch:clamp(finite(input.pitch),-.9,.9),
+    boost:Boolean(input.boost),carIndex:clamp(Math.trunc(finite(input.carIndex)),0,5),
+    lap:clamp(Math.trunc(finite(input.lap)),0,99),next:clamp(Math.trunc(finite(input.next)),0,999)
+  };
+}
+function racePeers(room,playerId){
+  const ids=new Set(room.players.filter(p=>p.id!==playerId).map(p=>p.id));
+  return [...clients.values()].filter(c=>c.profile&&ids.has(c.profile.id));
+}
 function handle(client,msg){
   if(!msg||typeof msg!=='object')return;
   try{
@@ -87,9 +105,28 @@ function handle(client,msg){
       }
       case 'room.start':{
         requireAuth(client);if(!client.roomId)throw Error('NOT_IN_ROOM');
-        const room=rooms.start(client.roomId,client.profile.id);
-        for(const p of room.players){const c=[...clients.values()].find(x=>x.profile?.id===p.id);if(c)send(c,'race.start',{room});}
+        const room=rooms.start(client.roomId,client.profile.id),startAt=Date.now()+3500;
+        for(const p of room.players){
+          const c=[...clients.values()].find(x=>x.profile?.id===p.id);
+          if(c){c.lastRaceAt=0;c.lastRaceSeq=-1;c.lastRaceState=null;send(c,'race.start',{room,startAt});}
+        }
         broadcastRoomList();break;
+      }
+      case 'race.state':{
+        requireAuth(client);if(!client.roomId)throw Error('NOT_IN_ROOM');
+        const room=rooms.get(client.roomId);if(!room||!room.started)throw Error('RACE_NOT_STARTED');
+        const now=Date.now();if(client.lastRaceAt&&now-client.lastRaceAt<25)break;
+        const state=sanitizeRaceState(msg.state||{});
+        if(state.seq<=client.lastRaceSeq)break;
+        if(client.lastRaceState&&client.lastRaceAt){
+          const dt=Math.max(.025,(now-client.lastRaceAt)/1000);
+          const dist=Math.hypot(state.x-client.lastRaceState.x,state.z-client.lastRaceState.z);
+          const speed=Math.max(Math.hypot(state.vx,state.vz),Math.hypot(client.lastRaceState.vx,client.lastRaceState.vz));
+          if(dist>12+Math.min(160,speed+25)*dt*2.5)throw Error('RACE_STATE_REJECTED');
+        }
+        client.lastRaceAt=now;client.lastRaceSeq=state.seq;client.lastRaceState=state;
+        for(const peer of racePeers(room,client.profile.id))send(peer,'race.state',{playerId:client.profile.id,nickname:client.profile.nickname,state,serverTime:now});
+        break;
       }
       default: fail(client,'UNKNOWN_MESSAGE');break;
     }
@@ -132,7 +169,7 @@ server.on('upgrade',(req,socket)=>{
   const keyHeader=req.headers['sec-websocket-key'];if(!keyHeader){socket.destroy();return;}
   const accept=crypto.createHash('sha1').update(keyHeader+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
   socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: '+accept+'\r\n\r\n');
-  const client={id:crypto.randomUUID(),socket,profile:null,roomId:null};
+  const client={id:crypto.randomUUID(),socket,profile:null,roomId:null,lastRaceAt:0,lastRaceSeq:-1,lastRaceState:null};
   clients.set(client.id,client);attachFrames(client);send(client,'server.hello',{version:1});
   socket.on('close',()=>{leaveRoom(client);releaseIdentity(client);clients.delete(client.id);broadcastRoomList();});
   socket.on('error',()=>{});
