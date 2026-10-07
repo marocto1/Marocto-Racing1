@@ -1,4 +1,4 @@
-name: Build Online v1 Playable
+name: Build Online v1.1 Cars
 
 on:
   workflow_dispatch:
@@ -45,25 +45,25 @@ jobs:
         shell: pwsh
         run: |
           $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
-          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-v1-Playable-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-v1.1-Cars-x64.exe"
           Copy-Item $source $target -Force
           if ((Get-Item $target).Length -lt 50000000) { throw "EXE unexpectedly small" }
           $hash=(Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
           Write-Host "SHA256 $hash"
       - uses: actions/upload-artifact@v4
         with:
-          name: Marocto-Racing-Online-v1-Playable
-          path: dist/Marocto-Racing-PC-v1.4.0-Online-v1-Playable-x64.exe
+          name: Marocto-Racing-Online-v1.1-Cars
+          path: dist/Marocto-Racing-PC-v1.4.0-Online-v1.1-Cars-x64.exe
           retention-days: 30
       - name: Publish prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: pc-online-v1-playable
+          tag_name: pc-online-v1.1-cars
           target_commitish: online-v1-playable
-          name: Marocto Racing v1.4.0 - Online v1 Playable
+          name: Marocto Racing v1.4.0 - Online v1.1 Cars
           prerelease: true
           body: |
-            First playable multiplayer build: real CC0 car meshes + MW-style physics + live network race.
+            Playable multiplayer build with visible per-player car selection.
 
             - six Kenney Car Kit CC0 OBJ bodies bundled directly in the game
             - MW2005-style Phase 7 drivetrain/tires/suspension retained
@@ -73,6 +73,8 @@ jobs:
             - passworded or public rooms
             - room size 2-8
             - MW-style race mode selection
+            - visible 3D car selector inside the online lobby
+            - selected car synced per player and used when race starts
             - Ready / Start lobby
             - public Render server wired in by default
             - Render cold-start wake/retry handling
@@ -80,5 +82,5 @@ jobs:
             - two-client race protocol smoke-tested in CI
             - Free Roam remains planned
             - stable main unchanged
-          files: dist/Marocto-Racing-PC-v1.4.0-Online-v1-Playable-x64.exe
+          files: dist/Marocto-Racing-PC-v1.4.0-Online-v1.1-Cars-x64.exe
           overwrite_files: true
