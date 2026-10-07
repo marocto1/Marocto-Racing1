@@ -1,15 +1,15 @@
-name: Build Online v0.2 Free Models
+name: Build Online v1 Playable
 
 on:
   workflow_dispatch:
   push:
-    branches: [online-v0.2-free-models]
+    branches: [online-v1-playable]
 
 permissions:
   contents: write
 
 jobs:
-  windows-online-v02:
+  windows-online-v1:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -23,6 +23,8 @@ jobs:
         run: npm run check
       - name: Run regression + online + CC0 model tests
         run: npm test
+      - name: Two-client live race smoke
+        run: node scripts/online-live-smoke.mjs
       - name: Verify bundled Kenney assets
         shell: pwsh
         run: |
@@ -43,25 +45,25 @@ jobs:
         shell: pwsh
         run: |
           $source = "dist/Marocto-Racing-PC-1.4.0-x64.exe"
-          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-v0.2-CC0-Cars-x64.exe"
+          $target = "dist/Marocto-Racing-PC-v1.4.0-Online-v1-Playable-x64.exe"
           Copy-Item $source $target -Force
           if ((Get-Item $target).Length -lt 50000000) { throw "EXE unexpectedly small" }
           $hash=(Get-FileHash $target -Algorithm SHA256).Hash.ToLower()
           Write-Host "SHA256 $hash"
       - uses: actions/upload-artifact@v4
         with:
-          name: Marocto-Racing-Online-v0.2-CC0-Cars
-          path: dist/Marocto-Racing-PC-v1.4.0-Online-v0.2-CC0-Cars-x64.exe
+          name: Marocto-Racing-Online-v1-Playable
+          path: dist/Marocto-Racing-PC-v1.4.0-Online-v1-Playable-x64.exe
           retention-days: 30
       - name: Publish prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: pc-online-v0.2-cc0-cars
-          target_commitish: online-v0.2-free-models
-          name: Marocto Racing v1.4.0 - Online v0.2 CC0 Cars
+          tag_name: pc-online-v1-playable
+          target_commitish: online-v1-playable
+          name: Marocto Racing v1.4.0 - Online v1 Playable
           prerelease: true
           body: |
-            Online lobby v0.1 plus bundled free car models.
+            First playable multiplayer build: real CC0 car meshes + MW-style physics + live network race.
 
             - six Kenney Car Kit CC0 OBJ bodies bundled directly in the game
             - MW2005-style Phase 7 drivetrain/tires/suspension retained
@@ -72,7 +74,11 @@ jobs:
             - room size 2-8
             - MW-style race mode selection
             - Ready / Start lobby
+            - public Render server wired in by default
+            - Render cold-start wake/retry handling
+            - 20 Hz live vehicle state replication with interpolation
+            - two-client race protocol smoke-tested in CI
             - Free Roam remains planned
             - stable main unchanged
-          files: dist/Marocto-Racing-PC-v1.4.0-Online-v0.2-CC0-Cars-x64.exe
+          files: dist/Marocto-Racing-PC-v1.4.0-Online-v1-Playable-x64.exe
           overwrite_files: true
