@@ -8,6 +8,7 @@ import {createVehicle,stepVehicle,collideBarrier,collideCars,resetVehicle,FIXED_
 import {InputManager} from './input.js';
 import {createAIController,AI_LEVELS} from './ai.js';
 import {initUI,strings} from './ui.js';
+import {initOnlineUI} from './online-ui.js';
 export const cars=CAR_SPECS.map(s=>[s.name,0,s.color]);
 const canvas=document.querySelector('#gl'),track=new Track(),input=new InputManager(),ai=createAIController(track);
 const pick=[0,1],cameras=[new ChaseCamera(),new ChaseCamera()],previewCamera=new ChaseCamera(5.8,0,2.8,.85);
@@ -105,7 +106,7 @@ async function boot(){
     const scene=track.buildScene();world={ground:E.mesh(scene.ground),finish:E.mesh(scene.finish),environment:E.mesh(scene.environment),chunks:scene.chunks.map(c=>({mesh:E.mesh(c.geometry),x:c.x,z:c.z}))};
     const studio=new Geometry();studio.box(0,-.14,0,40,.10,40,[.25,.31,.38]);studio.box(0,-.005,0,3.4,.035,3.4,[.30,.37,.44]);world.studio=E.mesh(studio);
     const f=new Geometry();f.box(-.53,0,0,.06,.06,.3,[.15,.65,1]);f.box(.53,0,0,.06,.06,.3,[.15,.65,1]);world.flame=E.mesh(f);
-    initUI(MR);document.querySelector('#start').disabled=false;requestAnimationFrame(frame);
+    initUI(MR);initOnlineUI();document.querySelector('#start').disabled=false;requestAnimationFrame(frame);
   }catch(error){console.error(error);document.querySelector('#error').textContent=`WebGL2: ${error.message}`;document.querySelector('#error').hidden=false;}
 }
 boot();
