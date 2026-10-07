@@ -3,14 +3,15 @@ const DEFAULT_COLOR=[0.72,0.74,0.78];
 const DEFAULT_PARAMS={roughness:.55,reflectivity:.14,opacity:1,emissive:0,normalStrength:0,detailStrength:.2};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
-export const MW_MODEL_MANIFEST=[
-  {id:'bmwm3gtr',match:'Touring GTR · E46 inspired',capture:'assets/mw2005/bmwm3gtr/capture.json',body:'assets/mw2005/bmwm3gtr/body.obj',wheel:'assets/mw2005/bmwm3gtr/wheel.obj',mtl:'assets/mw2005/bmwm3gtr/body.mtl',forward:'z',up:'y'},
-  {id:'skyline',match:'Vector R · R34 inspired',capture:'assets/mw2005/skyline/capture.json',body:'assets/mw2005/skyline/body.obj',wheel:'assets/mw2005/skyline/wheel.obj',mtl:'assets/mw2005/skyline/body.mtl',forward:'z',up:'y'},
-  {id:'supra',match:'Apex J · Mk4 inspired',capture:'assets/mw2005/supra/capture.json',body:'assets/mw2005/supra/body.obj',wheel:'assets/mw2005/supra/wheel.obj',mtl:'assets/mw2005/supra/body.mtl',forward:'z',up:'y'},
-  {id:'rx7',match:'Rotary F · FD inspired',capture:'assets/mw2005/rx7/capture.json',body:'assets/mw2005/rx7/body.obj',wheel:'assets/mw2005/rx7/wheel.obj',mtl:'assets/mw2005/rx7/body.mtl',forward:'z',up:'y'},
-  {id:'lancerevo8',match:'Rally IX · Evo inspired',capture:'assets/mw2005/lancerevo8/capture.json',body:'assets/mw2005/lancerevo8/body.obj',wheel:'assets/mw2005/lancerevo8/wheel.obj',mtl:'assets/mw2005/lancerevo8/body.mtl',forward:'z',up:'y'},
-  {id:'911turbo',match:'RearSport GT · 911 inspired',capture:'assets/mw2005/911turbo/capture.json',body:'assets/mw2005/911turbo/body.obj',wheel:'assets/mw2005/911turbo/wheel.obj',mtl:'assets/mw2005/911turbo/body.mtl',forward:'z',up:'y'}
+export const CAR_MODEL_MANIFEST=[
+  {id:'track-r',match:'Touring GTR · E46 inspired',body:'assets/free-cars/track-r/body.obj',mtl:'assets/free-cars/track-r/body.mtl',forward:'z',up:'y',excludeWheelGroups:true,tintSpec:true,source:'kenney-cc0'},
+  {id:'vector-f',match:'Vector R · R34 inspired',body:'assets/free-cars/vector-f/body.obj',mtl:'assets/free-cars/vector-f/body.mtl',forward:'z',up:'y',excludeWheelGroups:true,tintSpec:true,source:'kenney-cc0'},
+  {id:'apex-s',match:'Apex J · Mk4 inspired',body:'assets/free-cars/apex-s/body.obj',mtl:'assets/free-cars/apex-s/body.mtl',forward:'z',up:'y',excludeWheelGroups:true,tintSpec:true,source:'kenney-cc0'},
+  {id:'rotary-h',match:'Rotary F · FD inspired',body:'assets/free-cars/rotary-h/body.obj',mtl:'assets/free-cars/rotary-h/body.mtl',forward:'z',up:'y',excludeWheelGroups:true,tintSpec:true,source:'kenney-cc0'},
+  {id:'rally-s',match:'Rally IX · Evo inspired',body:'assets/free-cars/rally-s/body.obj',mtl:'assets/free-cars/rally-s/body.mtl',forward:'z',up:'y',excludeWheelGroups:true,tintSpec:true,source:'kenney-cc0'},
+  {id:'rearsport-x',match:'RearSport GT · 911 inspired',body:'assets/free-cars/rearsport-x/body.obj',mtl:'assets/free-cars/rearsport-x/body.mtl',forward:'z',up:'y',excludeWheelGroups:true,tintSpec:true,source:'kenney-cc0'}
 ];
+export const MW_MODEL_MANIFEST=CAR_MODEL_MANIFEST;
 
 function resolveIndex(i,n){const v=Number(i);return v<0?n+v:v-1;}
 function colorOf(materials,name){return materials.get(name)?.kd||DEFAULT_COLOR;}
@@ -26,6 +27,18 @@ export function parseMTL(text){
     else if(cmd==='map_Kd'&&current)current.map=rest.join(' ');
   }
   return out;
+}
+
+export function filterOBJGroups(text,{excludeWheels=false}={}){
+  if(!excludeWheels)return text;
+  let group='default';const out=[];
+  for(const raw of text.split(/\r?\n/)){
+    const line=raw.trim();
+    if(line.startsWith('g ')){group=line.slice(2).trim().toLowerCase();out.push(raw);continue;}
+    if(line.startsWith('f ')&&group.startsWith('wheel'))continue;
+    out.push(raw);
+  }
+  return out.join('\n');
 }
 
 export function parseOBJ(text,materials=new Map()){
@@ -90,9 +103,11 @@ async function loadNativeCapture(spec,entry){
 async function loadOBJCar(spec,entry){
   const bodyText=await maybeText(entry.body);if(!bodyText)return null;
   const mtlText=entry.mtl?await maybeText(entry.mtl):null,materials=mtlText?parseMTL(mtlText):new Map(),materialBase=new URL(entry.mtl||entry.body,import.meta.url);
-  const body=resolveTextures(normalizeSections(parseOBJ(bodyText,materials),spec,entry),materialBase);
+  const bodySource=filterOBJGroups(bodyText,{excludeWheels:Boolean(entry.excludeWheelGroups)});
+  const body=resolveTextures(normalizeSections(parseOBJ(bodySource,materials),spec,entry),materialBase);
+  if(entry.tintSpec)for(const section of body){section.color=[...spec.color];section.texture=null;section.textureURL=null;section.maps={};section.textureURLs={};section.surface='paint';section.params={...DEFAULT_PARAMS,roughness:.38,reflectivity:.24};}
   let wheel=null;if(entry.wheel){const wheelText=await maybeText(entry.wheel);if(wheelText)wheel=resolveTextures(normalizeSections(parseOBJ(wheelText,materials),spec,{...entry,wheel:true}),materialBase);}
-  return {source:'mw2005-obj-import',id:entry.id,body,wheel,wheelX:spec.width*.505,wheelZ:spec.wheelbase*.5,wheelRadius:.35};
+  return {source:entry.source||'obj-import',id:entry.id,body,wheel,wheelX:spec.width*.505,wheelZ:spec.wheelbase*.5,wheelRadius:.35};
 }
 
 export async function loadImportedCar(spec,entry){
@@ -102,5 +117,5 @@ export async function loadImportedCar(spec,entry){
 }
 
 export async function loadImportedCarSet(specs){
-  return Promise.all(specs.map(async spec=>{const entry=MW_MODEL_MANIFEST.find(x=>x.match===spec.name);try{return await loadImportedCar(spec,entry);}catch(error){console.warn('Imported car fallback',spec.name,error);return null;}}));
+  return Promise.all(specs.map(async spec=>{const entry=CAR_MODEL_MANIFEST.find(x=>x.match===spec.name);try{return await loadImportedCar(spec,entry);}catch(error){console.warn('Imported car fallback',spec.name,error);return null;}}));
 }
