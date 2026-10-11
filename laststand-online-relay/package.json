@@ -1,0 +1,10 @@
+{
+  "name": "laststand-v13-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Last Stand: Two Survivors multiplayer matchmaking and relay",
+  "main": "server.js",
+  "scripts": {"start": "node server.js", "test": "node test.js"},
+  "engines": {"node": ">=20"},
+  "dependencies": {"ws": "^8.18.3"}
+}
